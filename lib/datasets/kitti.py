@@ -177,14 +177,14 @@ class KITTI(data.Dataset):
             indices = np.zeros((self.max_objs), dtype=np.int64)
             # if torch.__version__ == '1.10.0+cu113':
             if torch.__version__ in ['1.10.0+cu113', '1.10.0', '1.6.0', '1.4.0']:
-                mask_2d = np.zeros((self.max_objs), dtype=np.bool)
+                mask_2d = np.zeros((self.max_objs), dtype=np.bool_)
             else:
-                mask_2d = np.zeros((self.max_objs), dtype=np.uint8)
+                mask_2d = np.zeros((self.max_objs), dtype=np.bool_)
             object_num = len(objects) if len(objects) < self.max_objs else self.max_objs
 
             vis_depth = np.zeros((self.max_objs, 7, 7), dtype=np.float32)
             att_depth = np.zeros((self.max_objs, 7, 7), dtype=np.float32)
-            depth_mask = np.zeros((self.max_objs, 7, 7), dtype=np.bool)
+            depth_mask = np.zeros((self.max_objs, 7, 7), dtype=np.bool_)
 
             for i in range(object_num):
                 # filter objects by writelist
@@ -306,7 +306,7 @@ if __name__ == '__main__':
         # test image
         img = inputs[0].numpy().transpose(1, 2, 0)
         img = (img * dataset.std + dataset.mean) * 255
-        img = Image.fromarray(img.astype(np.uint8))
+        img = Image.fromarray(img.astype(np.bool_))
         img.show()
         # print(targets['size_3d'][0][0])
 

@@ -127,7 +127,7 @@ class DID(nn.Module):
             if torch.__version__ in ['1.10.0+cu113', '1.10.0', '1.6.0', '1.4.0']:
                 masks = torch.ones(inds.size()).type(torch.bool).to(device_id)
             else:
-                masks = torch.ones(inds.size()).type(torch.uint8).to(device_id)
+                masks = torch.ones(inds.size()).type(torch.bool).to(device_id)
 
         ret.update(self.get_roi_feat(feat,inds,masks,ret,calibs,coord_ranges,cls_ids))
         return ret
