@@ -54,7 +54,7 @@ class DID(nn.Module):
                                      nn.Conv2d(self.head_conv, 2, kernel_size=1, stride=1, padding=0, bias=True))
         self.size_2d = nn.Sequential(nn.Conv2d(channels[self.first_level], self.head_conv, kernel_size=3, padding=1, bias=True),
                                      nn.ReLU(inplace=True),
-                                     nn.Conv2d(self.head_conv, 2, kernel_size=1, stride=1, padding=0, bias=True))
+                                     nn.Conv2d(self.head_conv, 4, kernel_size=1, stride=1, padding=0, bias=True))
 
         self.offset_3d = nn.Sequential(nn.Conv2d(channels[self.first_level]+2+self.cls_num, self.head_conv, kernel_size=3, padding=1, bias=True),
                                      nn.BatchNorm2d(self.head_conv),
@@ -226,8 +226,16 @@ class DID(nn.Module):
         device_id = feat.device
         coord_map = torch.cat([torch.arange(WIDE).unsqueeze(0).repeat([HEIGHT,1]).unsqueeze(0),\
                         torch.arange(HEIGHT).unsqueeze(-1).repeat([1,WIDE]).unsqueeze(0)],0).unsqueeze(0).repeat([BATCH_SIZE,1,1,1]).type(torch.float).to(device_id)
-        box2d_centre = coord_map + ret['offset_2d']
-        box2d_maps = torch.cat([box2d_centre-ret['size_2d']/2,box2d_centre+ret['size_2d']/2],1)
+        # box2d_centre = coord_map + ret['offset_2d']
+        # box2d_maps = torch.cat([box2d_centre-ret['size_2d']/2,box2d_centre+ret['size_2d']/2],1)
+        
+        left, top, right, bottom = ret['size_2d'][:, 0:1, :, :], \
+                                   ret['size_2d'][:, 1:2, :, :], \
+                                   ret['size_2d'][:, 2:3, :, :], \
+                                   ret['size_2d'][:, 3:4, :, :]
+        left_top = torch.cat([left, top], dim=1)
+        right_bottom = torch.cat([right, bottom], dim=1)
+        box2d_maps = torch.cat([coord_map-left_top, coord_map+right_bottom],1)
         box2d_maps = torch.cat([torch.arange(BATCH_SIZE).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat([1,1,HEIGHT,WIDE]).type(torch.float).to(device_id),box2d_maps],1)
         #box2d_maps is box2d in each bin
         res = self.get_roi_feat_by_mask(feat,box2d_maps,inds,mask,calibs,coord_ranges,cls_ids)

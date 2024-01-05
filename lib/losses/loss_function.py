@@ -15,11 +15,15 @@ class Hierarchical_Task_Learning:
         self.past_losses=[]
         self.loss_graph = {'seg_loss':[],
                            'size2d_loss':[], 
-                           'offset2d_loss':[],
-                           'offset3d_loss':['size2d_loss','offset2d_loss'],
-                           'size3d_loss':['size2d_loss','offset2d_loss'], 
-                           'heading_loss':['size2d_loss','offset2d_loss'], 
-                           'depth_loss':['size2d_loss','size3d_loss','offset2d_loss']}
+                        #    'offset2d_loss':[],
+                        #    'offset3d_loss':['size2d_loss','offset2d_loss'],
+                        #    'size3d_loss':['size2d_loss','offset2d_loss'], 
+                        #    'heading_loss':['size2d_loss','offset2d_loss'], 
+                        #    'depth_loss':['size2d_loss','size3d_loss','offset2d_loss']}
+                           'offset3d_loss':['size2d_loss'],
+                           'size3d_loss':['size2d_loss'], 
+                           'heading_loss':['size2d_loss'], 
+                           'depth_loss':['size2d_loss','size3d_loss']}
 
 
     def compute_weight(self,current_loss,epoch):
@@ -100,13 +104,14 @@ class DIDLoss(nn.Module):
         size2d_target = extract_target_from_tensor(target['size_2d'], target['mask_2d'])
         size2d_loss = F.l1_loss(size2d_input, size2d_target, reduction='mean')
         # compute offset2d loss
-        offset2d_input = extract_input_from_tensor(input['offset_2d'], target['indices'], target['mask_2d'])
-        offset2d_target = extract_target_from_tensor(target['offset_2d'], target['mask_2d'])
-        offset2d_loss = F.l1_loss(offset2d_input, offset2d_target, reduction='mean')
+        # offset2d_input = extract_input_from_tensor(input['offset_2d'], target['indices'], target['mask_2d'])
+        # offset2d_target = extract_target_from_tensor(target['offset_2d'], target['mask_2d'])
+        # offset2d_loss = F.l1_loss(offset2d_input, offset2d_target, reduction='mean')
 
 
-        loss = offset2d_loss + size2d_loss   
-        self.stat['offset2d_loss'] = offset2d_loss
+        # loss = offset2d_loss + size2d_loss   
+        loss = size2d_loss   
+        # self.stat['offset2d_loss'] = offset2d_loss
         self.stat['size2d_loss'] = size2d_loss
         return loss
 

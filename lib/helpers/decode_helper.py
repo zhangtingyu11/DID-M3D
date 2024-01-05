@@ -64,7 +64,7 @@ def extract_dets_from_outputs(outputs, conf_mode='ada', K=50):
     # get src outputs
     heatmap = outputs['heatmap']
     size_2d = outputs['size_2d']
-    offset_2d = outputs['offset_2d']
+    # offset_2d = outputs['offset_2d']
 
     batch, channel, height, width = heatmap.size() # get shape
     heading = outputs['heading'].view(batch,K,-1)
@@ -95,10 +95,10 @@ def extract_dets_from_outputs(outputs, conf_mode='ada', K=50):
     heatmap = _nms(heatmap)
     scores, inds, cls_ids, xs, ys = _topk(heatmap, K=K)
 
-    offset_2d = _transpose_and_gather_feat(offset_2d, inds)
-    offset_2d = offset_2d.view(batch, K, 2)
-    xs2d = xs.view(batch, K, 1) + offset_2d[:, :, 0:1]
-    ys2d = ys.view(batch, K, 1) + offset_2d[:, :, 1:2]
+    # offset_2d = _transpose_and_gather_feat(offset_2d, inds)
+    # offset_2d = offset_2d.view(batch, K, 2)
+    # xs2d = xs.view(batch, K, 1) + offset_2d[:, :, 0:1]
+    # ys2d = ys.view(batch, K, 1) + offset_2d[:, :, 1:2]
 
     xs3d = xs.view(batch, K, 1) + offset_3d[:, :, 0:1]
     ys3d = ys.view(batch, K, 1) + offset_3d[:, :, 1:2]
@@ -107,13 +107,25 @@ def extract_dets_from_outputs(outputs, conf_mode='ada', K=50):
     scores = scores.view(batch, K, 1)
 
     # check shape
-    xs2d = xs2d.view(batch, K, 1)
-    ys2d = ys2d.view(batch, K, 1)
+    # xs2d = xs2d.view(batch, K, 1)
+    # ys2d = ys2d.view(batch, K, 1)
     xs3d = xs3d.view(batch, K, 1)
     ys3d = ys3d.view(batch, K, 1)
 
     size_2d = _transpose_and_gather_feat(size_2d, inds)
-    size_2d = size_2d.view(batch, K, 2)
+    size_2d = size_2d.view(batch, K, 4)
+    left = xs3d-size_2d[:, :, 0:1]
+    right = xs3d+size_2d[:, :, 2:3]
+    top = ys3d-size_2d[:, :, 1:2]
+    bottom = ys3d+size_2d[:, :, 3:4]
+    xs2d = (left+right)/2
+    ys2d = (top+bottom)/2
+    xs2d = xs2d.view(batch, K, 1)
+    ys2d = ys2d.view(batch, K, 1)
+    
+    w = size_2d[:, :, 0:1] + size_2d[:, :, 2:3]
+    h = size_2d[:, :, 1:2] + size_2d[:, :, 3:4]
+    size_2d = torch.cat([w, h], dim=-1)
 
     detections = torch.cat([cls_ids, scores, xs2d, ys2d, size_2d, heading, size_3d, xs3d, ys3d, merge_depth, merge_conf], dim=2)
 

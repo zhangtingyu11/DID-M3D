@@ -164,8 +164,8 @@ class KITTI(data.Dataset):
                     if object.ry < -np.pi: object.ry += 2 * np.pi
             # labels encoding
             heatmap = np.zeros((self.num_classes, features_size[1], features_size[0]), dtype=np.float32) # C * H * W
-            size_2d = np.zeros((self.max_objs, 2), dtype=np.float32)
-            offset_2d = np.zeros((self.max_objs, 2), dtype=np.float32)
+            size_2d = np.zeros((self.max_objs, 4), dtype=np.float32)
+            # offset_2d = np.zeros((self.max_objs, 2), dtype=np.float32)
             depth = np.zeros((self.max_objs, 1), dtype=np.float32)
             heading_bin = np.zeros((self.max_objs, 1), dtype=np.int64)
             heading_res = np.zeros((self.max_objs, 1), dtype=np.float32)
@@ -233,8 +233,11 @@ class KITTI(data.Dataset):
     
                 # encoding 2d/3d offset & 2d size
                 indices[i] = center_heatmap[1] * features_size[0] + center_heatmap[0]
-                offset_2d[i] = center_2d - center_heatmap
-                size_2d[i] = 1. * w, 1. * h
+                # offset_2d[i] = center_2d - center_heatmap
+                # size_2d[i] = 1. * w, 1. * h
+                size_2d[i] = center_heatmap[0]-bbox_2d[0], center_heatmap[1]-bbox_2d[1], \
+                            bbox_2d[2]-center_heatmap[0], bbox_2d[3]-center_heatmap[1]
+                
     
                 # encoding depth
                 depth[i] = objects[i].pos[-1]
@@ -270,7 +273,7 @@ class KITTI(data.Dataset):
             targets = {'depth': depth,
                        'size_2d': size_2d,
                        'heatmap': heatmap,
-                       'offset_2d': offset_2d,
+                    #    'offset_2d': offset_2d,
                        'indices': indices,
                        'size_3d': size_3d,
                        'offset_3d': offset_3d,
