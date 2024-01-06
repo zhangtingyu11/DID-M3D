@@ -44,7 +44,6 @@ class Trainer(object):
             assert os.path.exists(self.cfg_train['resume_model'])
             self.epoch = load_checkpoint(self.model, self.optimizer, self.cfg_train['resume_model'], self.logger, map_location=self.device)
             self.lr_scheduler.last_epoch = self.epoch - 1
-
         self.model = torch.nn.DataParallel(model).to(self.device)
 
     def train(self):

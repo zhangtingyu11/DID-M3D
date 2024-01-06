@@ -1,6 +1,6 @@
 import os, sys
 import math
-
+from mmcv.ops import DeformConv2dPack as DCN
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(os.path.dirname(BASE_DIR))
 sys.path.append(ROOT_DIR)
@@ -27,6 +27,25 @@ class Conv2d(nn.Module):
         x = self.bn(x)
         x = self.relu(x)
         return x
+    
+class DCNConv2d(nn.Module):
+    def __init__(self, in_planes, out_planes, kernal_szie=3, stride=1, bias=True):
+        super(DCNConv2d, self).__init__()
+        
+        self.conv = DCN(in_planes,
+                        out_planes,
+                        kernel_size=kernal_szie,
+                        stride=stride,
+                        padding=kernal_szie//2,
+                        deform_groups = 1)
+        self.bn = nn.BatchNorm2d(out_planes)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.bn(x)
+        x = self.relu(x)
+        return x
 
 
 
@@ -44,8 +63,8 @@ class IDAUp(nn.Module):
             in_channels = in_channels_list[i]
             up_factors = int(up_factors_list[i])
 
-            proj = Conv2d(in_channels, out_channels, kernal_szie=3, stride=1, bias=False)
-            node = Conv2d(out_channels*2, out_channels, kernal_szie=3, stride=1, bias=False)
+            proj = DCNConv2d(in_channels, out_channels, kernal_szie=3, stride=1, bias=False)
+            node = DCNConv2d(out_channels*2, out_channels, kernal_szie=3, stride=1, bias=False)
             up = nn.ConvTranspose2d(in_channels=out_channels,
                                     out_channels=out_channels,
                                     kernel_size=up_factors * 2,
