@@ -39,8 +39,8 @@ trainer:
   eval_frequency: 10 # evaluation interval (in epoch)
   save_frequency: 10 # checkpoint save interval (in epoch)
   disp_frequency: 200 # display interval (in batch)
-  log_dir: 'kitti_models/logs/DID-M3D'
-  out_dir: 'kitti_models/output/DID-M3D'
+  log_dir: 'kitti_models/logs/no_filter_trun_and_occ_2'
+  out_dir: 'kitti_models/output/no_filter_trun_and_occ_2'
 
 tester:
   threshold: 0.2  # confidence filter

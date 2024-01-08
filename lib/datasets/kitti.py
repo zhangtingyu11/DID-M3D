@@ -252,8 +252,9 @@ class KITTI(data.Dataset):
                 size_3d[i] = src_size_3d[i] - mean_size
 
                 #objects[i].trucation <=0.5 and objects[i].occlusion<=2 and (objects[i].box2d[3]-objects[i].box2d[1])>=25:
-                if objects[i].trucation <=0.5 and objects[i].occlusion<=2:
-                    mask_2d[i] = 1
+                # if objects[i].trucation <=0.5 and objects[i].occlusion<=2:
+                    # mask_2d[i] = 1
+                mask_2d[i] = 1
 
                 roi_depth = roi_align(torch.from_numpy(down_d_trans).unsqueeze(0).unsqueeze(0).type(torch.float32),
                                       [torch.tensor(bbox_2d).unsqueeze(0)], [7, 7]).numpy()[0, 0]
