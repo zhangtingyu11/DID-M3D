@@ -82,6 +82,8 @@ class DID(nn.Module):
                                              nn.LeakyReLU(inplace=True),
                                              nn.Conv2d(self.head_conv, 1, kernel_size=1, stride=1, padding=0, bias=True))
 
+        encoderlayer = nn.TransformerEncoderLayer(channels[self.first_level], 8, batch_first=True)
+        self.encoder = nn.TransformerEncoder(encoderlayer, 6)
 
         # init layers
         self.heatmap[-1].bias.data.fill_(-2.19)
@@ -165,6 +167,11 @@ class DID(nn.Module):
             #concatenate coord maps with feature maps in the channel dim
             cls_hots = torch.zeros(num_masked_bin,self.cls_num).to(device_id)
             cls_hots[torch.arange(num_masked_bin).to(device_id),cls_ids[mask].long()] = 1.0
+            
+            batch_size, feature_dim, *roi_size = roi_feature_masked.shape
+            roi_feature_masked = roi_feature_masked.view(batch_size, -1, feature_dim).contiguous()
+            roi_feature_masked = self.encoder(roi_feature_masked)
+            roi_feature_masked = roi_feature_masked.view(batch_size, feature_dim, *roi_size)
             
             roi_feature_masked = torch.cat([roi_feature_masked,coord_maps,cls_hots.unsqueeze(-1).unsqueeze(-1).repeat([1,1,7,7])],1)
 
