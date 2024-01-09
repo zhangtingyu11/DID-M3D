@@ -14,7 +14,7 @@ from lib.helpers.decode_helper import decode_detections
 
 from tools import eval
 
-
+from torch.utils.tensorboard import SummaryWriter
 class Trainer(object):
     def __init__(self,
                  cfg,
@@ -51,6 +51,8 @@ class Trainer(object):
         start_epoch = self.epoch
         ei_loss = self.compute_e0_loss()
         loss_weightor = Hierarchical_Task_Learning(ei_loss)
+        suf = self.cfg_train['log_dir'].split('/')[-1]
+        self.writer = SummaryWriter('runs/' + suf)
         for epoch in range(start_epoch, self.cfg_train['max_epoch']):
             # train one epoch
             self.logger.info('------ TRAIN EPOCH %03d ------' %(epoch + 1))
@@ -143,6 +145,11 @@ class Trainer(object):
             outputs = self.model(inputs,coord_ranges,calibs,targets)
 
             total_loss, loss_terms = criterion(outputs, targets)
+
+            for key, val in loss_terms.items():
+                self.writer.add_scalar(key,
+                                val,
+                                self.epoch * len(self.train_loader) + batch_idx)
             
             if loss_weights is not None:
                 total_loss = torch.zeros(1).cuda()
@@ -219,11 +226,12 @@ class Trainer(object):
         # self.save_results(results)
         out_dir = os.path.join(self.cfg_train['out_dir'], 'EPOCH_' + str(self.epoch))
         self.save_results(results, out_dir)
-        eval.eval_from_scrach(
+        log_str = eval.eval_from_scrach(
             self.label_dir,
             os.path.join(out_dir, 'data'),
             self.eval_cls,
             ap_mode=40)
+        self.logger.info('\n'.join(log_str))
 
     def save_results(self, results, output_dir='./outputs'):
         output_dir = os.path.join(output_dir, 'data')
