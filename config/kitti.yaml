@@ -35,12 +35,12 @@ lr_scheduler:
 
 trainer:
   max_epoch: 200
-  eval_start: 150
+  eval_start: 90
   eval_frequency: 10 # evaluation interval (in epoch)
   save_frequency: 10 # checkpoint save interval (in epoch)
   disp_frequency: 200 # display interval (in batch)
-  log_dir: 'kitti_models/logs/trans_encoder1'
-  out_dir: 'kitti_models/output/trans_encoder1'
+  log_dir: 'kitti_models/logs/trans_encoder_res_conn'
+  out_dir: 'kitti_models/output/trans_encoder_res_conn'
 
 tester:
   threshold: 0.2  # confidence filter

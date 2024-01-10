@@ -170,7 +170,9 @@ class DID(nn.Module):
             
             batch_size, feature_dim, *roi_size = roi_feature_masked.shape
             roi_feature_masked = roi_feature_masked.view(batch_size, -1, feature_dim).contiguous()
-            roi_feature_masked = self.encoder(roi_feature_masked)
+            attr_roi_feature_masked = self.encoder(roi_feature_masked)
+            roi_feature_masked = roi_feature_masked+attr_roi_feature_masked
+            
             roi_feature_masked = roi_feature_masked.view(batch_size, feature_dim, *roi_size)
             
             roi_feature_masked = torch.cat([roi_feature_masked,coord_maps,cls_hots.unsqueeze(-1).unsqueeze(-1).repeat([1,1,7,7])],1)
