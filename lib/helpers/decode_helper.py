@@ -71,14 +71,40 @@ def extract_dets_from_outputs(outputs, conf_mode='ada', K=50):
 
     vis_depth = outputs['vis_depth'].view(batch,K,7,7)
     att_depth = outputs['att_depth'].view(batch,K,7,7)
-    ins_depth = vis_depth + att_depth
+    # ins_depth = vis_depth + att_depth
+    
+    ins_depth = (vis_depth + att_depth).view(-1, 7*7)
 
-    ins_depth_uncer = outputs['ins_depth_uncer'].view(batch,K,7,7)
-    merge_prob = (-(0.5 * ins_depth_uncer).exp()).exp()
-    merge_depth = (torch.sum((ins_depth*merge_prob).view(batch,K,-1), dim=-1) /
-                   torch.sum(merge_prob.view(batch,K,-1), dim=-1))
-    merge_depth = merge_depth.unsqueeze(2)
+    # ins_depth_uncer = outputs['ins_depth_uncer'].view(batch,K,7,7)
+    # merge_prob = (-(0.5 * ins_depth_uncer).exp()).exp()
+    # merge_depth = (torch.sum((ins_depth*merge_prob).view(batch,K,-1), dim=-1) /
+    #                torch.sum(merge_prob.view(batch,K,-1), dim=-1))
+    # merge_depth = merge_depth.unsqueeze(2)
+    ins_depth_uncer = outputs['ins_depth_uncer'].view(-1,7*7)
+    min_indices = torch.argmin(ins_depth_uncer, dim=1)
 
+    # 创建一个全零的张量
+    result_tensor = torch.zeros_like(ins_depth_uncer)
+
+    # 在每一行的最小值位置设置为1
+    result_tensor.scatter_(1, min_indices.view(-1, 1), 1)
+    merge_depth = 0
+    mask = result_tensor==1
+    while True:
+        merge_prob = (-(0.5 * ins_depth_uncer).exp()).exp()
+        merge_prob[~mask] = 0
+        merge_prob_weight = merge_prob / torch.sum(merge_prob, dim=1, keepdim=True)
+        variance = torch.exp(0.5 * ins_depth_uncer) ** 2
+        variance_total = torch.sum(variance * merge_prob_weight**2, dim=1, keepdim=True)
+        variance_total = torch.sqrt(variance_total)
+        merge_depth = torch.sum((ins_depth * merge_prob_weight), dim=1, keepdim=True)
+        in_place_mask = (ins_depth >= merge_depth-3*torch.sqrt(variance_total)) & (ins_depth <= merge_depth+3*torch.sqrt(variance_total))
+        new_mask = mask | in_place_mask
+        if torch.equal(new_mask, mask):
+            break
+        mask = new_mask
+    merge_depth = merge_depth.view(batch, -1, 1)
+    
     if conf_mode == 'ada':
         merge_conf = (torch.sum(merge_prob.view(batch,K,-1)**2, dim=-1) / \
                       torch.sum(merge_prob.view(batch,K,-1), dim=-1)).unsqueeze(2)

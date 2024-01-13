@@ -36,11 +36,11 @@ lr_scheduler:
 trainer:
   max_epoch: 150
   eval_start: 90
-  eval_frequency: 10 # evaluation interval (in epoch)
-  save_frequency: 10 # checkpoint save interval (in epoch)
+  eval_frequency: 5 # evaluation interval (in epoch)
+  save_frequency: 5 # checkpoint save interval (in epoch)
   disp_frequency: 200 # display interval (in batch)
-  log_dir: 'kitti_models/logs/DID-M3D'
-  out_dir: 'kitti_models/output/DID-M3D'
+  log_dir: 'kitti_models/logs/new_merge_depth_5'
+  out_dir: 'kitti_models/output/new_merge_depth_5'
 
 tester:
   threshold: 0.2  # confidence filter
