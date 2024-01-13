@@ -16,6 +16,20 @@
                 "--config",
                 "config/kitti.yaml"
             ]
+        },
+        {
+            "name": "test",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd":"${workspaceFolder}",
+            "program": "tools/train_val.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args":[
+                "--config",
+                "config/kitti.yaml",
+                "-e"
+            ]
         }
     ]
 }

@@ -27,17 +27,17 @@ def get_best_3dmod_acc(filename):
     return best
 
 def change_yaml_name(yaml_file, index):
-    log_dir_line = 41
-    out_dir_line = 42
     with open(yaml_file, 'r') as f:
         lines = f.readlines()
-        log_dir_content = lines[log_dir_line]
-        log_dir_content = replace_numbers(log_dir_content, index)
-        lines[log_dir_line] = log_dir_content
-        
-        out_dir_content = lines[out_dir_line]
-        out_dir_content = replace_numbers(out_dir_content, index)
-        lines[out_dir_line] = out_dir_content
+        for idx, line in enumerate(lines):
+            if 'log_dir' in line:
+                log_dir_content = lines[idx]
+                log_dir_content = replace_numbers(log_dir_content, index)
+                lines[idx] = log_dir_content
+            if 'out_dir' in line:
+                out_dir_content = lines[idx]
+                out_dir_content = replace_numbers(out_dir_content, index)
+                lines[idx] = out_dir_content
     with open(yaml_file, 'w') as f:
         f.writelines(lines)
         
@@ -48,7 +48,7 @@ def send_email(easy, mod, hard, map):
     password = "SNOYAHKUJNPWATEF"
 
     # 邮件内容
-    subject = "中等的mAP超过17%, 训练停止"
+    subject = "中等的mAP超过17.38%, 训练停止"
     body = "当前各个难度的AP为({}, {}, {}), mAP为{}".format(easy, mod, hard, map)
     
     # 创建 MIMEText 对象
@@ -68,9 +68,9 @@ if __name__ == "__main__":
     for idx in range(100):
         change_yaml_name('/home/public/zty/Project/DeepLearningProject/DID-M3D/config/kitti.yaml', idx)
         os.system('CUDA_VISIBLE_DEVICES=0,1 python tools/train_val.py --config config/kitti.yaml')
-        log_filename = '/home/public/zty/Project/DeepLearningProject/DID-M3D/kitti_models/logs/origin_{}/train.log'.format(idx)
+        log_filename = '/home/public/zty/Project/DeepLearningProject/DID-M3D/kitti_models/logs/new_merge_depth_{}/train.log'.format(idx)
         easy, mod, hard = get_best_3dmod_acc(log_filename)
-        if mod > 17:
+        if mod > 17.38:
             send_email(easy, mod, hard, (easy+mod+hard)/3)
             break
         
