@@ -4,7 +4,7 @@ from email.mime.text import MIMEText
 from email.header import Header
 import re
 import socks
-
+import random
 def replace_numbers(input_string, replacement_number):
     # 使用正则表达式匹配字符串中的数字
     result = re.sub(r'\d+', str(replacement_number), input_string)
@@ -48,7 +48,7 @@ def send_email(easy, mod, hard, map):
     password = "SNOYAHKUJNPWATEF"
 
     # 邮件内容
-    subject = "中等的mAP超过17.38%, 训练停止"
+    subject = "达到最佳性能"
     body = "当前各个难度的AP为({}, {}, {}), mAP为{}".format(easy, mod, hard, map)
     
     # 创建 MIMEText 对象
@@ -66,11 +66,11 @@ def send_email(easy, mod, hard, map):
 
 if __name__ == "__main__":
     for idx in range(100):
-        change_yaml_name('/home/public/zty/Project/DeepLearningProject/DID-M3D/config/kitti.yaml', idx)
-        os.system('CUDA_VISIBLE_DEVICES=0,1 python tools/train_val.py --config config/kitti.yaml')
-        log_filename = '/home/public/zty/Project/DeepLearningProject/DID-M3D/kitti_models/logs/new_merge_depth_{}/train.log'.format(idx)
+        seed = 1903919922
+        change_yaml_name('/home/public/zty/Project/DeepLearningProject/DID-M3D/config/kitti.yaml', 1903919922)
+        os.system('CUDA_VISIBLE_DEVICES=0,1 python tools/train_val.py --config config/kitti.yaml --random_seed {}'.format(1903919922))
+        log_filename = '/home/public/zty/Project/DeepLearningProject/DID-M3D/kitti_models/logs/random_seed_{}/train.log'.format(seed)
         easy, mod, hard = get_best_3dmod_acc(log_filename)
         if mod > 17.38:
             send_email(easy, mod, hard, (easy+mod+hard)/3)
             break
-        
