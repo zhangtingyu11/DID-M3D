@@ -9,6 +9,10 @@ import yaml
 import logging
 import argparse
 
+import torch
+import numpy as np
+import random
+
 from lib.helpers.dataloader_helper import build_dataloader
 from lib.helpers.model_helper import build_model
 from lib.helpers.optimizer_helper import build_optimizer
@@ -20,6 +24,8 @@ from lib.helpers.tester_helper import Tester
 parser = argparse.ArgumentParser(description='implementation of DID-M3D')
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true', help='evaluate model on validation set')
 parser.add_argument('--config', type=str, default='experiments/config.yaml')
+parser.add_argument('--random_seed', type=int, default=666)
+
 args = parser.parse_args()
 
 
@@ -32,6 +38,22 @@ def create_logger(log_file):
     logging.getLogger(__name__).addHandler(console)
     return logging.getLogger(__name__)
 
+def set_random_seed(seed, deterministic=False):
+    """Set random seed.
+
+    Args:
+        seed (int): Seed to be used.
+        deterministic (bool): Whether to set the deterministic option for
+            CUDNN backend, i.e., set `torch.backends.cudnn.deterministic`
+            to True and `torch.backends.cudnn.benchmark` to False.
+            Default: False.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def main():
     # load cfg
@@ -39,9 +61,9 @@ def main():
     cfg = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
     os.makedirs(cfg['trainer']['log_dir'], exist_ok=True)
     logger = create_logger(os.path.join(cfg['trainer']['log_dir'], 'train.log'))
-
+    set_random_seed(args.random_seed)
     #  build dataloader
-    train_loader, val_loader, _ = build_dataloader(cfg['dataset'])
+    train_loader, val_loader, _ = build_dataloader(cfg['dataset'], args.random_seed)
 
     # build model
     model = build_model(cfg['model'], train_loader.dataset.cls_mean_size)
@@ -57,7 +79,7 @@ def main():
 
     # build lr & bnm scheduler
     lr_scheduler, warmup_lr_scheduler = build_lr_scheduler(cfg['lr_scheduler'], optimizer, last_epoch=-1)
-
+    logger.info("设置随机种子为:{}".format(args.random_seed))
     trainer = Trainer(cfg=cfg,
                       model=model,
                       optimizer=optimizer,
