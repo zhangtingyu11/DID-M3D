@@ -2,7 +2,37 @@ import numpy as np
 import torch
 import torch.nn as nn
 from lib.datasets.utils import class2angle
+from scipy.optimize import minimize_scalar
+import numba as nb
 import cv2 as cv
+
+#TODO 可以修改interval的超参数
+@nb.jit(parallel = True)
+def func(x, interval=0.1, mu=0, b=1):
+    right = 0.5 * (1+np.sign(x+interval-mu)*(1-np.exp(-np.abs(x+interval-mu)/b)))
+    left = 0.5 * (1+np.sign(x-interval-mu)*(1-np.exp(-np.abs(x-interval-mu)/b)))
+    return left - right
+
+@nb.jit(parallel = True)
+def fun(x, parameters):
+    res = 0
+    for i in range(len(parameters[0])):
+        res += func(x, mu = parameters[0][i], b = parameters[1][i])
+    return res
+
+@nb.jit(parallel = True)
+def calculate_depth_and_conf(batch_size, K, laplace_b, laplace_miu):
+    merge_depth = np.zeros([batch_size, K, 1])
+    merge_conf = np.zeros([batch_size, K, 1])
+    for i in range(batch_size):
+        for j in range(K):
+            parameters = np.zeros((2, laplace_b.shape[2]))
+            parameters[0] = laplace_miu[i][j]
+            parameters[1] = laplace_b[i][j]
+            result = minimize_scalar(fun, bracket=(5,86.3), method = 'golden', args = (parameters, ))
+            merge_depth[i][j] = result['x']
+            merge_conf[i][j] = -result['fun']/49
+    return merge_depth, merge_conf
 
 def decode_detections(dets, info, calibs, cls_mean_size, threshold, problist=None):
     '''
@@ -74,18 +104,36 @@ def extract_dets_from_outputs(outputs, conf_mode='ada', K=50):
     ins_depth = vis_depth + att_depth
 
     ins_depth_uncer = outputs['ins_depth_uncer'].view(batch,K,7,7)
-    merge_prob = (-(0.5 * ins_depth_uncer).exp()).exp()
-    merge_depth = (torch.sum((ins_depth*merge_prob).view(batch,K,-1), dim=-1) /
-                   torch.sum(merge_prob.view(batch,K,-1), dim=-1))
-    merge_depth = merge_depth.unsqueeze(2)
+    laplace_b  = (ins_depth_uncer.exp()/1.414).view(batch, K, -1).detach().cpu().numpy()
+    laplace_miu = (ins_depth).view(batch, K, -1).detach().cpu().numpy()
+    merge_depth, merge_conf = calculate_depth_and_conf(batch, K, laplace_b, laplace_miu)
+    merge_depth = torch.from_numpy(merge_depth).to(ins_depth.device)
+    merge_conf = torch.from_numpy(merge_conf).to(ins_depth.device)
+    
+    # merge_depth = torch.zeros(batch, K, 1, device = ins_depth.device)
+    # merge_conf = torch.zeros(batch, K, 1, device = ins_depth.device)
+    # for i in range(ins_depth_uncer.shape[0]):
+    #     for j in range(ins_depth_uncer.shape[1]):
+    #         parameters = [[], []]
+    #         parameters[0] = laplace_miu[i][j].reshape(-1)
+    #         parameters[1] = laplace_b[i][j].reshape(-1)
+    #         partial_func = partial(fun, parameters = parameters)
+    #         result = minimize_scalar(partial_func, bounds=(0, 70), method='bounded')
+    #         merge_depth[i][j] = result['x']
+    #         merge_conf[i][j] = -result['fun']/49
+    
+    # merge_prob = (-(0.5 * ins_depth_uncer).exp()).exp()
+    # merge_depth = (torch.sum((ins_depth*merge_prob).view(batch,K,-1), dim=-1) /
+    #                torch.sum(merge_prob.view(batch,K,-1), dim=-1))
+    # merge_depth = merge_depth.unsqueeze(2)
 
-    if conf_mode == 'ada':
-        merge_conf = (torch.sum(merge_prob.view(batch,K,-1)**2, dim=-1) / \
-                      torch.sum(merge_prob.view(batch,K,-1), dim=-1)).unsqueeze(2)
-    elif conf_mode == 'max':
-        merge_conf = (merge_prob.view(batch, K, -1).max(-1))[0].unsqueeze(2)
-    else:
-        raise NotImplementedError("%s confidence aggreation is not supported" % conf_mode)
+    # if conf_mode == 'ada':
+    #     merge_conf = (torch.sum(merge_prob.view(batch,K,-1)**2, dim=-1) / \
+    #                   torch.sum(merge_prob.view(batch,K,-1), dim=-1)).unsqueeze(2)
+    # elif conf_mode == 'max':
+    #     merge_conf = (merge_prob.view(batch, K, -1).max(-1))[0].unsqueeze(2)
+    # else:
+    #     raise NotImplementedError("%s confidence aggreation is not supported" % conf_mode)
 
     size_3d = outputs['size_3d'].view(batch,K,-1)
     offset_3d = outputs['offset_3d'].view(batch,K,-1)
