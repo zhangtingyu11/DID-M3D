@@ -63,7 +63,7 @@ class Trainer(object):
 
             # reset numpy seed.
             # ref: https://github.com/pytorch/pytorch/issues/5059
-            # np.random.seed(np.random.get_state()[1][0] + epoch)
+            np.random.seed(np.random.get_state()[1][0] + epoch)
             loss_weights = loss_weightor.compute_weight(ei_loss,self.epoch)
 
             log_str = 'Weights: '
