@@ -1,12 +1,6 @@
 import numpy as np
 from torch.utils.data import DataLoader
 from lib.datasets.kitti import KITTI
-import random
-import torch
-from torch import distributed as dist
-TORCH_VERSION = torch.__version__
-from torch.utils.data import Sampler
-from functools import partial
 
     
 def build_dataloader(cfg):

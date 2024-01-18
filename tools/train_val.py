@@ -9,10 +9,6 @@ import yaml
 import logging
 import argparse
 
-import torch
-import numpy as np
-import random
-
 from lib.helpers.dataloader_helper import build_dataloader
 from lib.helpers.model_helper import build_model
 from lib.helpers.optimizer_helper import build_optimizer
