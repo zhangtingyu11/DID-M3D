@@ -8,7 +8,6 @@ import shutil
 from datetime import datetime
 
 
-
 from tools import eval
 
 from lib.helpers.save_helper import load_checkpoint
@@ -38,48 +37,51 @@ class Tester(object):
     def test(self):
         torch.set_grad_enabled(False)
         self.model.eval()
+        for lower_bound in np.arange(0, 5, 0.1):
+            for upper_bound in np.arange(70, 86.5, 0.5):
+                for interval in np.arange(0.01, 0.3, 0.01):
+                    results = {}
+                    progress_bar = tqdm.tqdm(total=len(self.data_loader), leave=True, desc='Evaluation Progress')
+                    for batch_idx, (inputs, calibs, coord_ranges, _, info) in enumerate(self.data_loader):
+                        # load evaluation data and move data to current device.
+                        if type(inputs) != dict:
+                            inputs = inputs.to(self.device)
+                        else:
+                            for key in inputs.keys(): inputs[key] = inputs[key].to(self.device)
+                        calibs = calibs.to(self.device)
+                        coord_ranges = coord_ranges.to(self.device)
 
-        results = {}
-        progress_bar = tqdm.tqdm(total=len(self.data_loader), leave=True, desc='Evaluation Progress')
-        for batch_idx, (inputs, calibs, coord_ranges, _, info) in enumerate(self.data_loader):
-            # load evaluation data and move data to current device.
-            if type(inputs) != dict:
-                inputs = inputs.to(self.device)
-            else:
-                for key in inputs.keys(): inputs[key] = inputs[key].to(self.device)
-            calibs = calibs.to(self.device)
-            coord_ranges = coord_ranges.to(self.device)
+                        outputs = self.model(inputs,coord_ranges,calibs,K=50,mode='test')
+                        dets = extract_dets_from_outputs(outputs=outputs, K=50, lower_bound=lower_bound, upper_bound=upper_bound, interval=interval)
+                        dets = dets.detach().cpu().numpy()
 
-            outputs = self.model(inputs,coord_ranges,calibs,K=50,mode='test')
-            dets = extract_dets_from_outputs(outputs=outputs, K=50)
-            dets = dets.detach().cpu().numpy()
+                        # get corresponding calibs & transform tensor to numpy
+                        calibs = [self.data_loader.dataset.get_calib(index) for index in info['img_id']]
+                        info = {key: val.detach().cpu().numpy() for key, val in info.items()}
+                        cls_mean_size = self.data_loader.dataset.cls_mean_size
+                        dets = decode_detections(dets = dets,
+                                                info = info,
+                                                calibs = calibs,
+                                                cls_mean_size=cls_mean_size,
+                                                threshold = self.cfg['threshold']
+                                                )
+                        results.update(dets)
+                        progress_bar.update()
 
-            # get corresponding calibs & transform tensor to numpy
-            calibs = [self.data_loader.dataset.get_calib(index) for index in info['img_id']]
-            info = {key: val.detach().cpu().numpy() for key, val in info.items()}
-            cls_mean_size = self.data_loader.dataset.cls_mean_size
-            dets = decode_detections(dets = dets,
-                                     info = info,
-                                     calibs = calibs,
-                                     cls_mean_size=cls_mean_size,
-                                     threshold = self.cfg['threshold']
-                                     )
-            results.update(dets)
-            progress_bar.update()
-
-        output_dir = os.path.join(
-            self.cfg['out_dir'],
-            os.path.basename(os.path.splitext(self.cfg['resume_model'])[0])
-        )
-        if os.path.exists(output_dir):
-            shutil.rmtree(output_dir)
-        self.save_results(results, output_dir=output_dir)
-        progress_bar.close()
-        eval.eval_from_scrach(
-            self.label_dir,
-            os.path.join(output_dir, 'data'),
-            self.eval_cls,
-            ap_mode=40)
+                    output_dir = os.path.join(
+                        self.cfg['out_dir'],
+                        os.path.basename(os.path.splitext(self.cfg['resume_model'])[0])
+                    )
+                    if os.path.exists(output_dir):
+                        shutil.rmtree(output_dir)
+                    self.save_results(results, output_dir=output_dir)
+                    progress_bar.close()
+                    log_str, res = eval.eval_from_scrach(
+                        self.label_dir,
+                        os.path.join(output_dir, 'data'),
+                        self.eval_cls,
+                        ap_mode=40)
+                    self.logger.info("lower_bound:{}, upper_bound:{}, interval:{}, res:\n{}".format(lower_bound, upper_bound, interval, '\n'.join(log_str)))
 
 
     def save_results(self, results, output_dir='./outputs'):

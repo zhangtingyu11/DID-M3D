@@ -17,19 +17,20 @@ def func(x, interval=0.1, mu=0, b=1):
 def fun(x, parameters):
     res = 0
     for i in range(len(parameters[0])):
-        res += func(x, mu = parameters[0][i], b = parameters[1][i])
+        res += func(x, interval = parameters[2][i], mu = parameters[0][i], b = parameters[1][i])
     return res
 
 @nb.jit(parallel = True)
-def calculate_depth_and_conf(batch_size, K, laplace_b, laplace_miu):
+def calculate_depth_and_conf(batch_size, K, laplace_b, laplace_miu, lower_bound, upper_bound, interval):
     merge_depth = np.zeros([batch_size, K, 1])
     merge_conf = np.zeros([batch_size, K, 1])
     for i in range(batch_size):
         for j in range(K):
-            parameters = np.zeros((2, laplace_b.shape[2]))
+            parameters = np.zeros((3, laplace_b.shape[2]))
             parameters[0] = laplace_miu[i][j]
             parameters[1] = laplace_b[i][j]
-            result = minimize_scalar(fun, bracket=(5,86.3), method = 'golden', args = (parameters, ))
+            parameters[2] = interval
+            result = minimize_scalar(fun, bracket=(lower_bound, upper_bound), method = 'golden', args = (parameters, ))
             merge_depth[i][j] = result['x']
             merge_conf[i][j] = -result['fun']/49
     return merge_depth, merge_conf
@@ -90,7 +91,7 @@ def decode_detections(dets, info, calibs, cls_mean_size, threshold, problist=Non
 #     return im_color
 
 #two stage style
-def extract_dets_from_outputs(outputs, conf_mode='ada', K=50):
+def extract_dets_from_outputs(outputs, conf_mode='ada', K=50, lower_bound=None, upper_bound = None, interval=None):
     # get src outputs
     heatmap = outputs['heatmap']
     size_2d = outputs['size_2d']
@@ -106,7 +107,7 @@ def extract_dets_from_outputs(outputs, conf_mode='ada', K=50):
     ins_depth_uncer = outputs['ins_depth_uncer'].view(batch,K,7,7)
     laplace_b  = (ins_depth_uncer.exp()/1.414).view(batch, K, -1).detach().cpu().numpy()
     laplace_miu = (ins_depth).view(batch, K, -1).detach().cpu().numpy()
-    merge_depth, merge_conf = calculate_depth_and_conf(batch, K, laplace_b, laplace_miu)
+    merge_depth, merge_conf = calculate_depth_and_conf(batch, K, laplace_b, laplace_miu, lower_bound, upper_bound, interval)
     merge_depth = torch.from_numpy(merge_depth).to(ins_depth.device)
     merge_conf = torch.from_numpy(merge_conf).to(ins_depth.device)
     
