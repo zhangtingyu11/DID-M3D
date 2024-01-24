@@ -1337,4 +1337,4 @@ def eval_from_scrach(gt_dir, det_dir, eval_cls_list=None, ap_mode=40):
             log_str.append(str(k) + ' ' + str(Car_res[k]))
             print(k, Car_res[k])
     print('\n')
-    return log_str
+    return log_str, Car_res['3d@0.70'][1]
