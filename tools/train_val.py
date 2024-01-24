@@ -12,7 +12,7 @@ import argparse
 from lib.helpers.dataloader_helper import build_dataloader
 from lib.helpers.model_helper import build_model
 from lib.helpers.optimizer_helper import build_optimizer
-from lib.helpers.scheduler_helper import build_lr_scheduler
+from lib.helpers.scheduler_helper import build_lr_scheduler, build_onecycle_lr_schduler
 from lib.helpers.trainer_helper import Trainer
 from lib.helpers.tester_helper import Tester
 
