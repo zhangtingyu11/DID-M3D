@@ -48,7 +48,7 @@ class Trainer(object):
         self.model = torch.nn.DataParallel(model).to(self.device)
 
     def train(self):
-        best_car = 0
+        best_mean = 0
         start_epoch = self.epoch
         ei_loss = self.compute_e0_loss()
         loss_weightor = Hierarchical_Task_Learning(ei_loss)
@@ -84,18 +84,18 @@ class Trainer(object):
             if ((self.epoch % self.cfg_train['eval_frequency']) == 0 and \
                 self.epoch >= self.cfg_train['eval_start']):
                 self.logger.info('------ EVAL EPOCH %03d ------' % (self.epoch))
-                mod_car = self.eval_one_epoch()
+                res = self.eval_one_epoch()
 
 
             if ((self.epoch % self.cfg_train['save_frequency']) == 0
                 and self.epoch >= self.cfg_train['eval_start']):
                 os.makedirs(self.cfg_train['log_dir']+'/checkpoints', exist_ok=True)
                 ckpt_name = os.path.join(self.cfg_train['log_dir']+'/checkpoints', 'best_checkpoint')
-                if mod_car > best_car:
+                if (res[0]+res[1]+res[2])/3 > best_mean:
                     save_checkpoint(get_checkpoint_state(self.model, self.optimizer, self.epoch), ckpt_name, self.logger)
                     with open(os.path.join(self.cfg_train['log_dir']+'/checkpoints', 'best_checkpoint.txt'), 'w') as f:
                         f.write(str(self.epoch))
-                    best_car = mod_car
+                    best_mean = (res[0]+res[1]+res[2])/3
 
         return None
     
@@ -197,6 +197,7 @@ class Trainer(object):
                             
         return stat_dict    
     def eval_one_epoch(self):
+        torch.set_grad_enabled(False)
         self.model.eval()
 
         results = {}
@@ -232,13 +233,14 @@ class Trainer(object):
         # self.save_results(results)
         out_dir = os.path.join(self.cfg_train['out_dir'], 'EPOCH_' + str(self.epoch))
         self.save_results(results, out_dir)
-        log_str, mod_car = eval.eval_from_scrach(
+        log_str, res = eval.eval_from_scrach(
             self.label_dir,
             os.path.join(out_dir, 'data'),
             self.eval_cls,
             ap_mode=40)
         self.logger.info('\n'.join(log_str))
-        return float(mod_car)
+        torch.set_grad_enabled(True)
+        return res
         
 
     def save_results(self, results, output_dir='./outputs'):
