@@ -5,8 +5,8 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: 当前文件",
-            "type": "python",
+            "name": "train",
+            "type": "debugpy",
             "request": "launch",
             "cwd":"${workspaceFolder}",
             "program": "tools/train_val.py",
@@ -14,7 +14,21 @@
             "justMyCode": true,
             "args":[
                 "--config",
-                "config/kitti.yaml"
+                "config/kitti_car.yaml"
+            ]
+        },
+        {
+            "name": "test",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd":"${workspaceFolder}",
+            "program": "tools/train_val.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args":[
+                "--config",
+                "config/kitti_car.yaml",
+                "-e"
             ]
         }
     ]

@@ -2,3 +2,4 @@ data
 kitti_models
 __pycache__
 runs
+work_dirs

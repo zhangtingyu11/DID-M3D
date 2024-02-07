@@ -46,8 +46,8 @@ class KITTI(data.Dataset):
         ##l,w,h
         self.cls_mean_size = np.array([[1.76255119    ,0.66068622   , 0.84422524   ],
                                        [1.52563191462 ,1.62856739989, 3.88311640418],
-                                       [1.73698127    ,0.59706367   , 1.76282397   ]])                              
-                              
+                                       [1.73698127    ,0.59706367   , 1.76282397   ]])          
+
         # data split loading
         assert split in ['train', 'val', 'trainval', 'test']
         self.split = split
@@ -101,13 +101,13 @@ class KITTI(data.Dataset):
         img = self.get_image(index)
         img_size = np.array(img.size)
 
-
-        d = cv.imread('{}/{:0>6}.png'.format(self.dense_depth_dir, index), -1) / 256.
-        dst_W, dst_H = img_size
-        pad_h, pad_w = dst_H - d.shape[0], (dst_W - d.shape[1]) // 2
-        pad_wr = dst_W - pad_w - d.shape[1]
-        d = np.pad(d, ((pad_h, 0), (pad_w, pad_wr)), mode='edge')
-        d = Image.fromarray(d)
+        if self.split!='test':
+            d = cv.imread('{}/{:0>6}.png'.format(self.dense_depth_dir, index), -1) / 256.
+            dst_W, dst_H = img_size
+            pad_h, pad_w = dst_H - d.shape[0], (dst_W - d.shape[1]) // 2
+            pad_wr = dst_W - pad_w - d.shape[1]
+            d = np.pad(d, ((pad_h, 0), (pad_w, pad_wr)), mode='edge')
+            d = Image.fromarray(d)
 
 
         # data augmentation for image
@@ -132,13 +132,14 @@ class KITTI(data.Dataset):
                             method=Image.AFFINE,
                             data=tuple(trans_inv.reshape(-1).tolist()),
                             resample=Image.BILINEAR)
-        d_trans = d.transform(tuple(self.resolution.tolist()),
-                            method=Image.AFFINE,
-                            data=tuple(trans_inv.reshape(-1).tolist()),
-                            resample=Image.BILINEAR)
-        d_trans = np.array(d_trans)
-        down_d_trans = cv.resize(d_trans, (self.resolution[0]//self.downsample, self.resolution[1]//self.downsample),
-                           interpolation=cv.INTER_AREA)
+        if self.split!='test':
+            d_trans = d.transform(tuple(self.resolution.tolist()),
+                                method=Image.AFFINE,
+                                data=tuple(trans_inv.reshape(-1).tolist()),
+                                resample=Image.BILINEAR)
+            d_trans = np.array(d_trans)
+            down_d_trans = cv.resize(d_trans, (self.resolution[0]//self.downsample, self.resolution[1]//self.downsample),
+                            interpolation=cv.INTER_AREA)
 
         coord_range = np.array([center-crop_size/2,center+crop_size/2]).astype(np.float32)
         # image encoding
@@ -220,6 +221,22 @@ class KITTI(data.Dataset):
     
                 # generate the radius of gaussian heatmap
                 w, h = bbox_2d[2] - bbox_2d[0], bbox_2d[3] - bbox_2d[1]
+                # enlarge_w, enlarge_h = w * 1.1, h * 1.1
+                # #* 不越界
+                # if 0<=center_2d[0]-enlarge_w/2 and center_2d[0]+enlarge_w/2 < features_size[0] and \
+                #     0<=center_2d[1]-enlarge_h/2 and center_2d[1]+enlarge_h/2 < features_size[1]:
+                #         pass
+                # else:   #* 越界
+                #     left = max(0, center_2d[0]-enlarge_w/2)
+                #     right = min(features_size[0]-1, center_2d[0]+enlarge_w/2)
+                #     top = max(0, center_2d[1]-enlarge_h/2)
+                #     bottom = min(features_size[1]-1, center_2d[1]+enlarge_h/2)
+                #     w_scale = min((center_2d[0]-left)/(w/2), (right-center_2d[0])/(w/2))
+                #     h_scale = min((center_2d[1]-top)/(h/2), (bottom-center_2d[1])/(h/2))
+                #     scale = min(w_scale, h_scale)
+                #     enlarge_w, enlarge_h = w * scale, h * scale
+                # enlarge_bbox_2d = np.array([center_2d[0]-enlarge_w/2, center_2d[1]-enlarge_h/2, center_2d[0]+enlarge_w/2, center_2d[1]+enlarge_h/2], dtype=np.float32)
+                    
                 radius = gaussian_radius((w, h))
                 radius = max(0, int(radius))
     

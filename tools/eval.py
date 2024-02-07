@@ -1320,21 +1320,21 @@ def eval_from_scrach(gt_dir, det_dir, eval_cls_list=None, ap_mode=40):
     log_str = []
     if AP_mode == 40:
         log_str.append('-' * 40 + 'AP40 evaluation' + '-' * 40)
-        # print('-' * 40 + 'AP40 evaluation' + '-' * 40)
+        print('-' * 40 + 'AP40 evaluation' + '-' * 40)
     if AP_mode == 11:
         log_str.append('-' * 40 + 'AP11 evaluation' + '-' * 40)
-        # print('-' * 40 + 'AP11 evaluation' + '-' * 40)
+        print('-' * 40 + 'AP11 evaluation' + '-' * 40)
 
-    # print('------------------evalute model: {}--------------------'.format(det_dir.split('/')[-3]))
+    print('------------------evalute model: {}--------------------'.format(det_dir.split('/')[-3]))
     log_str.append('------------------evalute model: {}--------------------'.format(det_dir.split('/')[-2]))
-    # print('------------------evalute model: {}--------------------'.format(det_dir.split('/')[-2]))
+    print('------------------evalute model: {}--------------------'.format(det_dir.split('/')[-2]))
     for cls in eval_cls_list:
         log_str.append('*' * 20 + cls + '*' * 20)
-        # print('*' * 20 + cls + '*' * 20)
+        print('*' * 20 + cls + '*' * 20)
         res = get_official_eval_result(all_gt, all_det, cls, z_axis=1, z_center=1)
         Car_res = res['detail'][cls]
         for k in Car_res.keys():
             log_str.append(str(k) + ' ' + str(Car_res[k]))
-            # print(k, Car_res[k])
-    # print('\n')
-    return log_str
+            print(k, Car_res[k])
+    print('\n')
+    return log_str, Car_res['3d@0.70']

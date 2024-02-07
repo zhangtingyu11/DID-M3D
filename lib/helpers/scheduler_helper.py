@@ -17,6 +17,12 @@ def build_lr_scheduler(cfg, optimizer, last_epoch):
         warmup_lr_scheduler = CosineWarmupLR(optimizer, num_epoch=5, init_lr=0.00001)
     return lr_scheduler, warmup_lr_scheduler
 
+def build_onecycle_lr_schduler(cfg, optimizer, last_epoch):
+    lr_scheduler = lr_sched.OneCycleLR(optimizer, 0.000225, total_steps = 46400, pct_start = 0.4, div_factor = 10)
+    warmup_lr_scheduler = None
+    # if cfg['warmup']:
+    #     warmup_lr_scheduler = CosineWarmupLR(optimizer, num_epoch=5, init_lr=0.00001)
+    return lr_scheduler, warmup_lr_scheduler
 
 def build_bnm_scheduler(cfg, model, last_epoch):
     if not cfg['enabled']:
