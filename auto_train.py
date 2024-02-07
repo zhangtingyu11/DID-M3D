@@ -11,7 +11,7 @@ def replace_numbers(input_string, replacement_number):
     return result
 
 def get_best_3dmod_acc(filename):
-    mod_best = -1
+    mean_best = -1
     best = []
     with open(filename, 'r') as f:
         lines = f.readlines()
@@ -21,8 +21,9 @@ def get_best_3dmod_acc(filename):
                 if match:
                     # 获取匹配到的三个数值
                     easy, mod, hard = [float(match.group(1)), float(match.group(2)), float(match.group(3))]
-                    if mod > mod_best:
-                        mod_best = mod
+                    mean = (easy+mod+hard)/3
+                    if mean > mean_best:
+                        mean_best = mean
                         best = [easy, mod, hard]
     return best
 
@@ -41,15 +42,19 @@ def change_yaml_name(yaml_file, index):
     with open(yaml_file, 'w') as f:
         f.writelines(lines)
         
-def send_email(easy, mod, hard, map):
+def send_email(easy, mod, hard, map, res):
     # 发件人和收件人信息
     sender_email = "18013933973@163.com"
     receiver_email = "18013933973@163.com"
     password = "SNOYAHKUJNPWATEF"
 
     # 邮件内容
-    subject = "达到最佳性能"
-    body = "当前各个难度的AP为({}, {}, {}), mAP为{}".format(easy, mod, hard, map)
+    subject = "使用LRRU的深度补全结果(去掉<2.0的深度, 不用分段权重, 使用随机权重"
+    if res == 0:
+        body = "当前各个难度的AP为({}, {}, {}), mAP为{}".format(easy, mod, hard, map)
+    else:
+        body = "程序出错啦, 当前各个难度的AP为({}, {}, {}), mAP为{}".format(easy, mod, hard, map)
+        
     
     # 创建 MIMEText 对象
     message = MIMEText(body, "plain", "utf-8")
@@ -65,12 +70,13 @@ def send_email(easy, mod, hard, map):
         server.sendmail(sender_email, receiver_email, message.as_string())
 
 if __name__ == "__main__":
-    for idx in range(100):
-        seed = 1903919922
-        change_yaml_name('/home/public/zty/Project/DeepLearningProject/DID-M3D/config/kitti.yaml', 1903919922)
-        os.system('CUDA_VISIBLE_DEVICES=0,1 python tools/train_val.py --config config/kitti.yaml --random_seed {}'.format(1903919922))
-        log_filename = '/home/public/zty/Project/DeepLearningProject/DID-M3D/kitti_models/logs/random_seed_{}/train.log'.format(seed)
+    for idx in range(10):
+        change_yaml_name('/home/public/zty/Project/DeepLearningProject/DID-M3D/config/kitti_car.yaml', idx)
+        res = os.system('CUDA_VISIBLE_DEVICES=0,1 python tools/train_val.py --config config/kitti_car.yaml')
+        log_filename = '/home/public/zty/Project/DeepLearningProject/DID-M3D/work_dirs/kitti_models/logs/only_car_lrru_clip_auto_weight_{}/train.log'.format(idx)
         easy, mod, hard = get_best_3dmod_acc(log_filename)
-        if mod > 17.38:
-            send_email(easy, mod, hard, (easy+mod+hard)/3)
-            break
+        # if mod > 17.38:
+        #     send_email(easy, mod, hard, (easy+mod+hard)/3)
+        #     break
+        send_email(easy, mod, hard, (easy+mod+hard)/3, res)
+        
