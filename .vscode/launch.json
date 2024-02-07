@@ -27,7 +27,7 @@
             "justMyCode": true,
             "args":[
                 "--config",
-                "config/kitti.yaml",
+                "config/kitti_car.yaml",
                 "-e"
             ]
         }
