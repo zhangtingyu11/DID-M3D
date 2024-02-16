@@ -5,6 +5,7 @@ from email.header import Header
 import re
 import socks
 import random
+import torch
 def replace_numbers(input_string, replacement_number):
     # 使用正则表达式匹配字符串中的数字
     result = re.sub(r'\d+', str(replacement_number), input_string)
@@ -49,11 +50,11 @@ def send_email(easy, mod, hard, map, res):
     password = "SNOYAHKUJNPWATEF"
 
     # 邮件内容
-    subject = "使用LRRU的深度补全结果(去掉<2.0的深度, 不用分段权重, 使用随机权重"
+    subject = "使用LRRU的深度补全结果(去掉<2.0的深度, 加上transformer, 增加gt depth mask的预测"
     if res == 0:
         body = "当前各个难度的AP为({}, {}, {}), mAP为{}".format(easy, mod, hard, map)
     else:
-        body = "程序出错啦, 当前各个难度的AP为({}, {}, {}), mAP为{}".format(easy, mod, hard, map)
+        body = "程序出错啦"
         
     
     # 创建 MIMEText 对象
@@ -70,13 +71,18 @@ def send_email(easy, mod, hard, map, res):
         server.sendmail(sender_email, receiver_email, message.as_string())
 
 if __name__ == "__main__":
-    for idx in range(10):
+    for idx in range(0, 100):
         change_yaml_name('/home/public/zty/Project/DeepLearningProject/DID-M3D/config/kitti_car.yaml', idx)
         res = os.system('CUDA_VISIBLE_DEVICES=0,1 python tools/train_val.py --config config/kitti_car.yaml')
-        log_filename = '/home/public/zty/Project/DeepLearningProject/DID-M3D/work_dirs/kitti_models/logs/only_car_lrru_clip_auto_weight_{}/train.log'.format(idx)
-        easy, mod, hard = get_best_3dmod_acc(log_filename)
+        log_filename = '/home/public/zty/Project/DeepLearningProject/DID-M3D/work_dirs/kitti_models/logs/only_car_lrru_clip_transformer_gt_depth_mask_{}/train.log'.format(idx)
+        if res == 0:
+            easy, mod, hard = get_best_3dmod_acc(log_filename)
+        else:
+            easy, mod, hard = 0, 0, 0
+            
         # if mod > 17.38:
         #     send_email(easy, mod, hard, (easy+mod+hard)/3)
         #     break
+        torch.cuda.empty_cache()
         send_email(easy, mod, hard, (easy+mod+hard)/3, res)
         
