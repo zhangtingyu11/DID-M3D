@@ -2,4 +2,6 @@ data
 kitti_models
 __pycache__
 runs
+*.png
+*.pkl
 work_dirs

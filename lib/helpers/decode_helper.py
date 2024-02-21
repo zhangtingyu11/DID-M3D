@@ -75,8 +75,19 @@ def extract_dets_from_outputs(outputs, conf_mode='ada', K=50):
 
     ins_depth_uncer = outputs['ins_depth_uncer'].view(batch,K,7,7)
     merge_prob = (-(0.5 * ins_depth_uncer).exp()).exp()
-    merge_depth = (torch.sum((ins_depth*merge_prob).view(batch,K,-1), dim=-1) /
-                   torch.sum(merge_prob.view(batch,K,-1), dim=-1))
+    new_merge_prob = torch.zeros_like(merge_prob)
+    #TODO 阈值参数还需要调整(测试出来的结果是让bev的性能更加好, 结果看上去也更加鲁棒)
+    merge_mask = merge_prob > 0.5
+    new_merge_prob[merge_mask] = merge_prob[merge_mask]
+    invalid_merge_mask = torch.sum(merge_mask.view(merge_mask.shape[0], merge_mask.shape[1], 49), dim=-1) == 0
+    new_merge_prob[invalid_merge_mask] = merge_prob[invalid_merge_mask]
+    
+    # merge_mask = torch.sum(merge_prob.view(-1, 49) < 0.6, dim=-1) > 0 
+    # merge_merge_mask = merge_prob[merge_mask] < 0.6
+    # merge_prob[merge_mask][merge_merge_mask] = 0
+    # merge_prob[merge_prob<0.6] = 0
+    merge_depth = (torch.sum((ins_depth*new_merge_prob).view(batch,K,-1), dim=-1) /
+                   torch.sum(new_merge_prob.view(batch,K,-1), dim=-1))
     merge_depth = merge_depth.unsqueeze(2)
 
     if conf_mode == 'ada':

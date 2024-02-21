@@ -50,7 +50,11 @@ def send_email(easy, mod, hard, map, res):
     password = "SNOYAHKUJNPWATEF"
 
     # 邮件内容
+<<<<<<< HEAD
     subject = "使用LRRU的深度补全结果(去掉<2.0的深度, 加上transformer, 增加gt depth mask的预测"
+=======
+    subject = "使用LRRU的深度补全结果(去掉<2.0的深度, 深度小于2的不预测"
+>>>>>>> master
     if res == 0:
         body = "当前各个难度的AP为({}, {}, {}), mAP为{}".format(easy, mod, hard, map)
     else:
@@ -71,15 +75,14 @@ def send_email(easy, mod, hard, map, res):
         server.sendmail(sender_email, receiver_email, message.as_string())
 
 if __name__ == "__main__":
-    for idx in range(0, 100):
+    for idx in range(1):
         change_yaml_name('/home/public/zty/Project/DeepLearningProject/DID-M3D/config/kitti_car.yaml', idx)
         res = os.system('CUDA_VISIBLE_DEVICES=0,1 python tools/train_val.py --config config/kitti_car.yaml')
-        log_filename = '/home/public/zty/Project/DeepLearningProject/DID-M3D/work_dirs/kitti_models/logs/only_car_lrru_clip_transformer_gt_depth_mask_{}/train.log'.format(idx)
+        log_filename = '/home/public/zty/Project/DeepLearningProject/DID-M3D/work_dirs/kitti_models/logs/only_car_lrru_record_{}/train.log'.format(idx)
         if res == 0:
             easy, mod, hard = get_best_3dmod_acc(log_filename)
         else:
             easy, mod, hard = 0, 0, 0
-            
         # if mod > 17.38:
         #     send_email(easy, mod, hard, (easy+mod+hard)/3)
         #     break
