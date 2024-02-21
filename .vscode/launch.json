@@ -6,7 +6,7 @@
     "configurations": [
         {
             "name": "train",
-            "type": "debugpy",
+            "type": "python",
             "request": "launch",
             "cwd":"${workspaceFolder}",
             "program": "tools/train_val.py",
@@ -19,7 +19,7 @@
         },
         {
             "name": "test",
-            "type": "debugpy",
+            "type": "python",
             "request": "launch",
             "cwd":"${workspaceFolder}",
             "program": "tools/train_val.py",
@@ -30,6 +30,15 @@
                 "config/kitti_car.yaml",
                 "-e"
             ]
+        }
+        {
+            "name": "custom",
+            "type": "python",
+            "request": "launch",
+            "cwd":"${workspaceFolder}",
+            "program": "pickle_reader.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
         }
     ]
 }
