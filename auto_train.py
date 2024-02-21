@@ -50,11 +50,7 @@ def send_email(easy, mod, hard, map, res):
     password = "SNOYAHKUJNPWATEF"
 
     # 邮件内容
-<<<<<<< HEAD
-    subject = "使用LRRU的深度补全结果(去掉<2.0的深度, 加上transformer, 增加gt depth mask的预测"
-=======
     subject = "使用LRRU的深度补全结果(去掉<2.0的深度, 深度小于2的不预测"
->>>>>>> master
     if res == 0:
         body = "当前各个难度的AP为({}, {}, {}), mAP为{}".format(easy, mod, hard, map)
     else:
