@@ -13,6 +13,7 @@ from lib.helpers.decode_helper import extract_dets_from_outputs
 from lib.helpers.decode_helper import decode_detections
 
 from tools import eval
+import pickle
 
 from torch.utils.tensorboard import SummaryWriter
 class Trainer(object):
@@ -39,6 +40,8 @@ class Trainer(object):
         self.class_name = test_loader.dataset.class_name
         self.label_dir = cfg['dataset']['label_dir']
         self.eval_cls = cfg['dataset']['eval_cls']
+        self.pickle_file = 'record.pkl'
+        self.pickle_info = []
 
         if self.cfg_train.get('resume_model', None):
             assert os.path.exists(self.cfg_train['resume_model'])
@@ -96,7 +99,8 @@ class Trainer(object):
                     with open(os.path.join(self.cfg_train['log_dir']+'/checkpoints', 'best_checkpoint.txt'), 'w') as f:
                         f.write(str(self.epoch))
                     best_mean = (res[0]+res[1]+res[2])/3
-
+        with open(self.pickle_file, 'wb') as f:
+            pickle.dump(self.pickle_info, f)
         return None
     
     def compute_e0_loss(self):
@@ -136,6 +140,7 @@ class Trainer(object):
 
         disp_dict = {}
         stat_dict = {}
+        batch_info = []
         for batch_idx, (inputs,calibs,coord_ranges, targets, info) in enumerate(self.train_loader):
             if type(inputs) != dict:
                 inputs = inputs.to(self.device)
@@ -150,7 +155,18 @@ class Trainer(object):
             outputs = self.model(inputs,coord_ranges,calibs,targets)
 
             total_loss, loss_terms = criterion(outputs, targets)
-
+            per_batch_info = {}
+            depth_mask = targets["depth_mask"][targets["mask_2d"]]
+            per_batch_info['vis_depth_pred'] = outputs["vis_depth"][outputs["train_tag"]].detach().cpu().numpy()
+            per_batch_info['att_depth_pred'] = outputs["att_depth"][outputs["train_tag"]].detach().cpu().numpy()
+            per_batch_info['ins_depth_pred'] = outputs["ins_depth"][outputs["train_tag"]].detach().cpu().numpy()
+            per_batch_info['vis_depth_uncertain_pred'] = outputs["vis_depth_uncer"][outputs["train_tag"]].detach().cpu().numpy()
+            per_batch_info['att_depth_uncertain_pred'] = outputs["att_depth_uncer"][outputs["train_tag"]].detach().cpu().numpy()
+            per_batch_info['ins_depth_uncertain_pred'] = outputs["ins_depth_uncer"][outputs["train_tag"]].detach().cpu().numpy()
+            per_batch_info['vis_depth_target'] = targets["vis_depth"][targets["mask_2d"]].detach().cpu().numpy()
+            per_batch_info['att_depth_target'] = targets["att_depth"][targets["mask_2d"]].detach().cpu().numpy()
+            per_batch_info['depth_target'] = targets["depth"][targets["mask_2d"]].detach().cpu().numpy()
+            batch_info.append(per_batch_info)
             for key, val in loss_terms.items():
                 self.writer.add_scalar(key,
                                 val,
@@ -194,7 +210,7 @@ class Trainer(object):
                 
         for key in stat_dict.keys():
             stat_dict[key] /= trained_batch
-                            
+        self.pickle_info.append(batch_info)             
         return stat_dict    
     def eval_one_epoch(self):
         torch.set_grad_enabled(False)
