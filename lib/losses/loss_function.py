@@ -5,6 +5,41 @@ import torch.nn.functional as F
 from lib.helpers.decode_helper import _transpose_and_gather_feat
 from lib.losses.focal_loss import focal_loss_cornernet as focal_loss
 from lib.losses.uncertainty_loss import laplacian_aleatoric_uncertainty_loss
+def transpose_and_gather_feat(feat, ind):
+    """Transpose and gather feature according to index.
+
+    Args:
+        feat (Tensor): Target feature map.
+        ind (Tensor): Target coord index.
+
+    Returns:
+        feat (Tensor): Transposed and gathered feature.
+    """
+    feat = feat.permute(0, 2, 3, 1).contiguous()
+    feat = feat.view(feat.size(0), -1, feat.size(3))
+    feat = gather_feat(feat, ind)
+    return feat
+
+
+def gather_feat(feat, ind, mask=None):
+    """Gather feature according to index.
+
+    Args:
+        feat (Tensor): Target feature map.
+        ind (Tensor): Target coord index.
+        mask (Tensor | None): Mask of feature map. Default: None.
+
+    Returns:
+        feat (Tensor): Gathered feature.
+    """
+    dim = feat.size(2)
+    ind = ind.unsqueeze(2).repeat(1, 1, dim)
+    feat = feat.gather(1, ind)
+    if mask is not None:
+        mask = mask.unsqueeze(2).expand_as(feat)
+        feat = feat[mask]
+        feat = feat.view(-1, dim)
+    return feat
 
 
 class Hierarchical_Task_Learning:
@@ -16,11 +51,13 @@ class Hierarchical_Task_Learning:
         self.loss_graph = {'seg_loss':[],
                            'size2d_loss':[], 
                            'offset2d_loss':[],
+                           'kpt_seg_loss':[], 
+                           'center2kpt_offset_loss':[], 
+                           'kpt_heatmap_offset_loss':[], 
                            'offset3d_loss':['size2d_loss','offset2d_loss'],
                            'size3d_loss':['size2d_loss','offset2d_loss'], 
                            'heading_loss':['size2d_loss','offset2d_loss'], 
                            'depth_loss':['size2d_loss','size3d_loss','offset2d_loss']}
-
 
     def compute_weight(self,current_loss,epoch):
         T=140
@@ -70,19 +107,25 @@ class DIDLoss(nn.Module):
         if targets['mask_2d'].sum() == 0:
             bbox2d_loss = 0
             bbox3d_loss = 0
+            kpt_loss = 0
+            kpt_seg_loss = 0
             self.stat['offset2d_loss'] = 0
             self.stat['size2d_loss'] = 0
             self.stat['depth_loss'] = 0
             self.stat['offset3d_loss'] = 0
             self.stat['size3d_loss'] = 0
             self.stat['heading_loss'] = 0
+            self.stat['kpt_seg_loss'] = 0
+            self.stat['center2kpt_offset_loss'] = 0
+            self.stat['kpt_heatmap_offset_loss'] = 0
         else:
             bbox2d_loss = self.compute_bbox2d_loss(preds, targets)
             bbox3d_loss = self.compute_bbox3d_loss(preds, targets)
+            kpt_loss = self.compute_kpt_loss(preds, targets)
+            kpt_seg_loss = self.compute_kpt_segmentation_loss(preds, targets)
 
         seg_loss = self.compute_segmentation_loss(preds, targets)
-
-        mean_loss = seg_loss + bbox2d_loss + bbox3d_loss
+        mean_loss = seg_loss + bbox2d_loss + bbox3d_loss + kpt_loss + kpt_seg_loss
         return float(mean_loss), self.stat
 
 
@@ -90,6 +133,12 @@ class DIDLoss(nn.Module):
         input['heatmap'] = torch.clamp(input['heatmap'].sigmoid_(), min=1e-4, max=1 - 1e-4)
         loss = focal_loss(input['heatmap'], target['heatmap'])
         self.stat['seg_loss'] = loss
+        return loss
+    
+    def compute_kpt_segmentation_loss(self, input, target):
+        input['kpt_heatmap'] = torch.clamp(input['kpt_heatmap'].sigmoid_(), min=1e-4, max=1 - 1e-4)
+        loss = focal_loss(input['kpt_heatmap'], target['kpt_heatmap_target'])
+        self.stat['kpt_seg_loss'] = loss
         return loss
 
 
@@ -109,7 +158,46 @@ class DIDLoss(nn.Module):
         self.stat['offset2d_loss'] = offset2d_loss
         self.stat['size2d_loss'] = size2d_loss
         return loss
+    
+    def compute_kpt_loss(self, input, target):
+        EPS = 1e-12
+        batch_size = input["size_2d"].shape[0]
+        center2kpt_offset_target = target["center2kpt_offset_target"]
+        kpt_heatmap_offset_target = target["kpt_heatmap_offset_target"]
+        indices_kpt = target["indices_kpt"].view(batch_size, -1)
+        mask_center2kpt_offset = target["mask_center2kpt_offset"]
+        mask_kpt_heatmap_offset = target["mask_kpt_heatmap_offset"]
+        
+        center2kpt_offset_pred = input["center2kpt_offset"]
+        kpt_heatmap_offset_pred = input["kpt_heatmap_offset"]
+        
+        indices = target["indices"]
+        mask_target = target["mask_2d"]
+        
+        max_objs = mask_target.shape[1]
+        
+        num_kpt = target["indices_kpt"].shape[-1]
+        
+        center2kpt_offset_pred = extract_input_from_tensor(center2kpt_offset_pred,
+                                                                indices, mask_target)  # B * (num_kpt * 2)
+        center2kpt_offset_target = extract_target_from_tensor(center2kpt_offset_target, mask_target)
+        mask_center2kpt_offset = extract_target_from_tensor(mask_center2kpt_offset, mask_target)
+        # kpt heatmap offset
+        kpt_heatmap_offset_pred = transpose_and_gather_feat(kpt_heatmap_offset_pred, indices_kpt)
+        kpt_heatmap_offset_pred = kpt_heatmap_offset_pred.reshape(batch_size, max_objs, num_kpt * 2)
+        kpt_heatmap_offset_pred = kpt_heatmap_offset_pred[mask_target]
+        kpt_heatmap_offset_target = kpt_heatmap_offset_target[mask_target]
+        mask_kpt_heatmap_offset = extract_target_from_tensor(mask_kpt_heatmap_offset, mask_target)
+        
+        center2kpt_offset_pred *= mask_center2kpt_offset
+        loss_center2kpt_offset = F.l1_loss(center2kpt_offset_pred, center2kpt_offset_target, reduction='sum')/(mask_center2kpt_offset.sum() + EPS)
 
+        kpt_heatmap_offset_pred *= mask_kpt_heatmap_offset
+        loss_kpt_heatmap_offset = F.l1_loss(kpt_heatmap_offset_pred, kpt_heatmap_offset_target, reduction='sum')/(mask_kpt_heatmap_offset.sum() + EPS)
+        self.stat['center2kpt_offset_loss'] = loss_center2kpt_offset
+        self.stat['kpt_heatmap_offset_loss'] = loss_kpt_heatmap_offset
+        loss = loss_center2kpt_offset + loss_kpt_heatmap_offset
+        return loss
 
     def compute_bbox3d_loss(self, input, target, mask_type = 'mask_2d'):
         vis_depth = input['vis_depth'][input['train_tag']]

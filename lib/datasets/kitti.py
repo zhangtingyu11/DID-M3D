@@ -7,28 +7,101 @@ from PIL import Image
 import matplotlib.pyplot as plt
 
 from lib.datasets.utils import angle2class
-from lib.datasets.utils import gaussian_radius
-from lib.datasets.utils import draw_umich_gaussian
+from lib.datasets.utils import gaussian_radius, center_to_corner_box3d
+from lib.datasets.utils import draw_umich_gaussian, gen_gaussian_target
 from lib.datasets.utils import get_angle_from_box3d,check_range
+from lib.datasets.utils import points_cam2img
 from lib.datasets.kitti_utils import get_objects_from_label
 from lib.datasets.kitti_utils import Calibration
 from lib.datasets.kitti_utils import get_affine_transform
 from lib.datasets.kitti_utils import affine_transform
 from lib.datasets.kitti_utils import compute_box_3d
 import pdb
-
 import cv2 as cv
 import torchvision.ops.roi_align as roi_align
 import math
 from lib.datasets.kitti_utils import Object3d
 
+from shapely.geometry import MultiPoint, box
+from typing import *
 
 
+
+def post_process_coords(
+    corner_coords: List, imsize: Tuple[int, int] = (1600, 900)
+) -> Union[Tuple[float, float, float, float], None]:
+    """Get the intersection of the convex hull of the reprojected bbox corners
+    and the image canvas, return None if no intersection.
+
+    Args:
+        corner_coords (list[int]): Corner coordinates of reprojected
+            bounding box.
+        imsize (tuple[int]): Size of the image canvas.
+
+    Return:
+        tuple [float]: Intersection of the convex hull of the 2D box
+            corners and the image canvas.
+    """
+    polygon_from_2d_box = MultiPoint(corner_coords).convex_hull
+    img_canvas = box(0, 0, imsize[0], imsize[1])
+
+    if polygon_from_2d_box.intersects(img_canvas):
+        img_intersection = polygon_from_2d_box.intersection(img_canvas)
+        intersection_coords = np.array(
+            [coord for coord in img_intersection.exterior.coords])
+
+        min_x = min(intersection_coords[:, 0])
+        min_y = min(intersection_coords[:, 1])
+        max_x = max(intersection_coords[:, 0])
+        max_y = max(intersection_coords[:, 1])
+
+        return min_x, min_y, max_x, max_y
+    else:
+        return None
+
+def view_points(points: np.ndarray, view: np.ndarray, normalize: bool) -> np.ndarray:
+    """
+    This is a helper class that maps 3d points to a 2d plane. It can be used to implement both perspective and
+    orthographic projections. It first applies the dot product between the points and the view. By convention,
+    the view should be such that the data is projected onto the first 2 axis. It then optionally applies a
+    normalization along the third dimension.
+
+    For a perspective projection the view should be a 3x3 camera matrix, and normalize=True
+    For an orthographic projection with translation the view is a 3x4 matrix and normalize=False
+    For an orthographic projection without translation the view is a 3x3 matrix (optionally 3x4 with last columns
+     all zeros) and normalize=False
+
+    :param points: <np.float32: 3, n> Matrix of points, where each point (x, y, z) is along each column.
+    :param view: <np.float32: n, n>. Defines an arbitrary projection (n <= 4).
+        The projection should be such that the corners are projected onto the first 2 axis.
+    :param normalize: Whether to normalize the remaining coordinate (along the third axis).
+    :return: <np.float32: 3, n>. Mapped point. If normalize=False, the third coordinate is the height.
+    """
+
+    assert view.shape[0] <= 4
+    assert view.shape[1] <= 4
+    assert points.shape[0] == 3
+
+    viewpad = np.eye(4)
+    viewpad[:view.shape[0], :view.shape[1]] = view
+
+    nbr_points = points.shape[1]
+
+    # Do operation in homogenous coordinates.
+    points = np.concatenate((points, np.ones((1, nbr_points))))
+    points = np.dot(viewpad, points)
+    points = points[:3, :]
+
+    if normalize:
+        points = points / points[2:3, :].repeat(3, 0).reshape(3, nbr_points)
+
+    return points
 class KITTI(data.Dataset):
     def __init__(self, root_dir, split, cfg):
         # basic configuration
         self.num_classes = 3
         self.max_objs = 50
+        self.num_kpt  = 9
         self.class_name = ['Pedestrian', 'Car', 'Cyclist']
         self.cls2id = {'Pedestrian': 0, 'Car': 1, 'Cyclist': 2}
         self.resolution = np.array([1280, 384])  # W * H
@@ -164,6 +237,7 @@ class KITTI(data.Dataset):
                     if object.ry > np.pi:  object.ry -= 2 * np.pi
                     if object.ry < -np.pi: object.ry += 2 * np.pi
             # labels encoding
+            feat_w, feat_h = features_size
             heatmap = np.zeros((self.num_classes, features_size[1], features_size[0]), dtype=np.float32) # C * H * W
             size_2d = np.zeros((self.max_objs, 2), dtype=np.float32)
             offset_2d = np.zeros((self.max_objs, 2), dtype=np.float32)
@@ -176,6 +250,14 @@ class KITTI(data.Dataset):
             height2d = np.zeros((self.max_objs, 1), dtype=np.float32)
             cls_ids = np.zeros((self.max_objs), dtype=np.int64)
             indices = np.zeros((self.max_objs), dtype=np.int64)
+            #! 增加关键点的预测
+            center2kpt_offset_target = np.zeros([self.max_objs, self.num_kpt * 2], dtype=np.float32)
+            kpt_heatmap_target = np.zeros([self.num_kpt, feat_h, feat_w], dtype=np.float32)
+            kpt_heatmap_offset_target = np.zeros([self.max_objs, self.num_kpt * 2], dtype=np.float32)
+            indices_kpt = np.zeros([self.max_objs, self.num_kpt], dtype=np.int64)
+            mask_center2kpt_offset =  np.zeros([self.max_objs, self.num_kpt * 2], dtype=np.float32)
+            mask_kpt_heatmap_offset = np.zeros([self.max_objs, self.num_kpt * 2], dtype=np.float32)
+            
             # if torch.__version__ == '1.10.0+cu113':
             if torch.__version__ in ['1.10.0+cu113', '1.10.0', '1.6.0', '1.4.0']:
                 mask_2d = np.zeros((self.max_objs), dtype=np.bool_)
@@ -216,27 +298,12 @@ class KITTI(data.Dataset):
 
                 # generate the center of gaussian heatmap [optional: 3d center or 2d center]
                 center_heatmap = center_3d.astype(np.int32) if self.use_3d_center else center_2d.astype(np.int32)
+
                 if center_heatmap[0] < 0 or center_heatmap[0] >= features_size[0]: continue
                 if center_heatmap[1] < 0 or center_heatmap[1] >= features_size[1]: continue
     
                 # generate the radius of gaussian heatmap
                 w, h = bbox_2d[2] - bbox_2d[0], bbox_2d[3] - bbox_2d[1]
-                # enlarge_w, enlarge_h = w * 1.1, h * 1.1
-                # #* 不越界
-                # if 0<=center_2d[0]-enlarge_w/2 and center_2d[0]+enlarge_w/2 < features_size[0] and \
-                #     0<=center_2d[1]-enlarge_h/2 and center_2d[1]+enlarge_h/2 < features_size[1]:
-                #         pass
-                # else:   #* 越界
-                #     left = max(0, center_2d[0]-enlarge_w/2)
-                #     right = min(features_size[0]-1, center_2d[0]+enlarge_w/2)
-                #     top = max(0, center_2d[1]-enlarge_h/2)
-                #     bottom = min(features_size[1]-1, center_2d[1]+enlarge_h/2)
-                #     w_scale = min((center_2d[0]-left)/(w/2), (right-center_2d[0])/(w/2))
-                #     h_scale = min((center_2d[1]-top)/(h/2), (bottom-center_2d[1])/(h/2))
-                #     scale = min(w_scale, h_scale)
-                #     enlarge_w, enlarge_h = w * scale, h * scale
-                # enlarge_bbox_2d = np.array([center_2d[0]-enlarge_w/2, center_2d[1]-enlarge_h/2, center_2d[0]+enlarge_w/2, center_2d[1]+enlarge_h/2], dtype=np.float32)
-                    
                 radius = gaussian_radius((w, h))
                 radius = max(0, int(radius))
     
@@ -283,6 +350,100 @@ class KITTI(data.Dataset):
                 att_depth[i] = depth[i] - vis_depth[i]
                 depth_mask[i] = roi_depth_ind
 
+                #! 关键点数据
+                loc = objects[i].pos[np.newaxis, :]
+                dim = np.array([objects[i].h, objects[i].w, objects[i].l])[np.newaxis, :]
+                rotation_y = np.array([objects[i].ry])[np.newaxis, :]
+                dst = np.array([0.5, 0.5, 0.5])
+                src = np.array([0.5, 1.0, 0.5])
+                loc = loc + dim * (dst - src)
+                offset = (calib.P2[0, 3] - calib.P0[0, 3]) \
+                    / calib.P2[0, 0]
+                loc_3d = np.copy(loc)
+                loc_3d[0, 0] += offset
+                gt_bbox_3d = np.concatenate([loc, dim, rotation_y], axis=1).astype(np.float32)
+                corners_3d = center_to_corner_box3d(
+                    gt_bbox_3d[:, :3],
+                    gt_bbox_3d[:, 3:6],
+                    gt_bbox_3d[:, 6], [0.5, 0.5, 0.5],
+                    axis=1)
+                corners_3d = corners_3d[0].T  # (1, 8, 3) -> (3, 8)
+                all_corners_3d = corners_3d.copy()
+                valid_corners_mask = np.zeros((8, 1))
+        
+                in_front = np.argwhere(corners_3d[2, :] > 0).flatten()
+                corners_3d = corners_3d[:, in_front]
+
+                # mark valid corners (depth > 0) as 1 (labelled but not visible, similar as COCO)
+                valid_corners_mask[in_front, :] = 1
+
+                # Project 3d box to 2d.
+                camera_intrinsic = calib.P2
+                camera_intrinsic = np.concatenate([camera_intrinsic, np.array([[0, 0, 0, 1]])], axis=0)
+                corner_coords = view_points(corners_3d, camera_intrinsic,
+                                            True).T[:, :2].tolist()
+                all_corner_coords = view_points(all_corners_3d, camera_intrinsic, True).T[:, :2]
+                all_corner_coords = np.hstack([all_corner_coords, valid_corners_mask])
+
+                # Keep only corners that fall within the image.
+                final_coords = post_process_coords(corner_coords, (1248, 384))
+
+                # Skip if the convex hull of the re-projected corners
+                # does not intersect the image canvas.
+                if final_coords is None:
+                    continue
+                
+                center3d = np.array(objects[i].pos).reshape([1, 3])
+                center2d = points_cam2img(
+                    center3d, camera_intrinsic, with_depth=True)
+                if center2d[0][2] <= 0:
+                    continue
+                center2d_valid = center2d.copy()
+                center2d_valid[:, 2] = 1
+                projected_pts = np.concatenate([all_corner_coords, center2d_valid])
+                for kpt_idx in range(len(projected_pts)):
+                    kptx, kpty, vis = projected_pts[kpt_idx]
+                    is_kpt_in_image = (0 <= kptx <= self.resolution[0]) and (0 <= kpty <= self.resolution[1])
+                    if is_kpt_in_image:
+                        projected_pts[kpt_idx, 2] = 2
+                kpts_2d = np.array(projected_pts.reshape(-1, 3))
+                kpts_valid_mask = kpts_2d[:, 2].astype('int64')
+                kpts_2d = kpts_2d[:, :2].astype('float32').reshape(-1)
+                kpts_2d = kpts_2d.reshape(self.num_kpt, 2)
+                kpts_2d[:, 0] /= self.downsample
+                kpts_2d[:, 1] /= self.downsample
+                ctx_int, cty_int = center_2d.astype(np.int32)
+                ctx, cty = center_2d
+                scale_box_h = (bbox_2d[3] - bbox_2d[1])
+                scale_box_w = (bbox_2d[2] - bbox_2d[0])
+                radius = gaussian_radius([scale_box_h, scale_box_w],
+                                         min_overlap=0.3)
+                radius = max(0, int(radius))
+                for k in range(self.num_kpt):
+                    kpt = kpts_2d[k]
+                    kptx_int, kpty_int = int(kpt[0]), int(kpt[1])
+                    kptx, kpty = kpt
+                    vis_level = kpts_valid_mask[k]
+                    if vis_level < 1:
+                        continue
+
+                    center2kpt_offset_target[i, k * 2] = kptx - ctx_int
+                    center2kpt_offset_target[i, k * 2 + 1] = kpty - cty_int
+                    mask_center2kpt_offset[i, k * 2:k * 2 + 2] = 1
+
+                    is_kpt_inside_image = (0 <= kptx_int < feat_w) and (0 <= kpty_int < feat_h)
+                    if not is_kpt_inside_image:
+                        continue
+
+                    draw_umich_gaussian(kpt_heatmap_target[k],
+                                        [kptx_int, kpty_int], radius)
+
+                    kpt_index = kpty_int * feat_w + kptx_int
+                    indices_kpt[i, k] = kpt_index
+
+                    kpt_heatmap_offset_target[i, k * 2] = kptx - kptx_int
+                    kpt_heatmap_offset_target[i, k * 2 + 1] = kpty - kpty_int
+                    mask_kpt_heatmap_offset[i, k * 2:k * 2 + 2] = 1
 
             targets = {'depth': depth,
                        'size_2d': size_2d,
@@ -298,7 +459,13 @@ class KITTI(data.Dataset):
 
                        'vis_depth': vis_depth,
                        'att_depth': att_depth,
-                       'depth_mask': depth_mask
+                       'depth_mask': depth_mask,
+                       "center2kpt_offset_target" : center2kpt_offset_target,
+                       "kpt_heatmap_target": kpt_heatmap_target,
+                       "kpt_heatmap_offset_target": kpt_heatmap_offset_target,
+                       "mask_center2kpt_offset": mask_center2kpt_offset,
+                       "indices_kpt": indices_kpt,
+                       "mask_kpt_heatmap_offset": mask_kpt_heatmap_offset
                        }
         else:
             targets = {}

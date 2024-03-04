@@ -118,7 +118,8 @@ class Object3d(object):
 def get_calib_from_file(calib_file):
     with open(calib_file) as f:
         lines = f.readlines()
-
+    obj = lines[0].strip().split(' ')[1:]
+    P0 = np.array(obj, dtype=np.float32)
     obj = lines[2].strip().split(' ')[1:]
     P2 = np.array(obj, dtype=np.float32)
     obj = lines[3].strip().split(' ')[1:]
@@ -131,7 +132,8 @@ def get_calib_from_file(calib_file):
     return {'P2': P2.reshape(3, 4),
             'P3': P3.reshape(3, 4),
             'R0': R0.reshape(3, 3),
-            'Tr_velo2cam': Tr_velo_to_cam.reshape(3, 4)}
+            'Tr_velo2cam': Tr_velo_to_cam.reshape(3, 4),
+            'P0': P0.reshape(3, 4)}
 
 
 class Calibration(object):
@@ -145,6 +147,7 @@ class Calibration(object):
         self.R0 = calib['R0']  # 3 x 3
         self.V2C = calib['Tr_velo2cam']  # 3 x 4
         self.C2V = self.inverse_rigid_trans(self.V2C)
+        self.P0 = calib['P0']
 
         # Camera intrinsics and extrinsics
         self.cu = self.P2[0, 2]

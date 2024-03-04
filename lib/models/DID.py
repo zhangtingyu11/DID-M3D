@@ -12,7 +12,11 @@ import torchvision.ops.roi_align as roi_align
 from lib.losses.loss_function import extract_input_from_tensor
 from lib.helpers.decode_helper import _topk,_nms
 
-
+def normal_init(module, mean=0, std=1, bias=0):
+    if hasattr(module, 'weight') and module.weight is not None:
+        nn.init.normal_(module.weight, mean, std)
+    if hasattr(module, 'bias') and module.bias is not None:
+        nn.init.constant_(module.bias, bias)
 
 def weights_init_xavier(m):
     classname = m.__class__.__name__
@@ -55,6 +59,18 @@ class DID(nn.Module):
         self.size_2d = nn.Sequential(nn.Conv2d(channels[self.first_level], self.head_conv, kernel_size=3, padding=1, bias=True),
                                      nn.ReLU(inplace=True),
                                      nn.Conv2d(self.head_conv, 2, kernel_size=1, stride=1, padding=0, bias=True))
+        self.center2kpt_offset_head = nn.Sequential(nn.Conv2d(channels[self.first_level], self.head_conv, kernel_size=3, padding=1, bias=True),
+                                     nn.BatchNorm2d(self.head_conv),
+                                     nn.ReLU(inplace=True),
+                                     nn.Conv2d(self.head_conv, 9*2, kernel_size=1, stride=1, padding=0, bias=True))
+        self.kpt_heatmap_head = nn.Sequential(nn.Conv2d(channels[self.first_level], self.head_conv, kernel_size=3, padding=1, bias=True),
+                                     nn.BatchNorm2d(self.head_conv),
+                                     nn.ReLU(inplace=True),
+                                     nn.Conv2d(self.head_conv, 9, kernel_size=1, stride=1, padding=0, bias=True))
+        self.kpt_heatmap_offset_head = nn.Sequential(nn.Conv2d(channels[self.first_level], self.head_conv, kernel_size=3, padding=1, bias=True),
+                                     nn.BatchNorm2d(self.head_conv),
+                                     nn.ReLU(inplace=True),
+                                     nn.Conv2d(self.head_conv, 2, kernel_size=1, stride=1, padding=0, bias=True))
 
         self.offset_3d = nn.Sequential(nn.Conv2d(channels[self.first_level]+2+self.cls_num, self.head_conv, kernel_size=3, padding=1, bias=True),
                                      nn.BatchNorm2d(self.head_conv),
@@ -85,6 +101,8 @@ class DID(nn.Module):
 
         # init layers
         self.heatmap[-1].bias.data.fill_(-2.19)
+        self.kpt_heatmap_head[-1].bias.data.fill_(-2.19)
+        
         self.fill_fc_weights(self.offset_2d)
         self.fill_fc_weights(self.size_2d)
 
@@ -96,7 +114,10 @@ class DID(nn.Module):
         self.att_depth.apply(weights_init_xavier)
         self.vis_depth_uncer.apply(weights_init_xavier)
         self.att_depth_uncer.apply(weights_init_xavier)
-
+        for head in [self.center2kpt_offset_head, self.kpt_heatmap_offset_head]:
+            for m in head.modules():
+                if isinstance(m, nn.Conv2d):
+                    normal_init(m, std=0.001)
 
     def forward(self, input, coord_ranges,calibs, targets=None, K=50, mode='train'):
         device_id = input.device
@@ -112,6 +133,9 @@ class DID(nn.Module):
         ret['heatmap']=self.heatmap(feat)
         ret['offset_2d']=self.offset_2d(feat)
         ret['size_2d']=self.size_2d(feat)
+        ret['kpt_heatmap'] = self.kpt_heatmap_head(feat)
+        ret['center2kpt_offset'] = self.center2kpt_offset_head(feat)
+        ret['kpt_heatmap_offset'] = self.kpt_heatmap_offset_head(feat)
 
         # torch.cuda.synchronize()
         #two stage

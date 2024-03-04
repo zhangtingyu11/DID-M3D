@@ -24,8 +24,8 @@ model:
   neck: 'DLAUp'
 
 optimizer:
-  type: 'adam'
-  lr: 0.001
+  type: 'adamw'
+  lr: 0.000225
   weight_decay: 0.00001
 
 lr_scheduler:
@@ -34,13 +34,13 @@ lr_scheduler:
   decay_list: [90, 120]
 
 trainer:
-  max_epoch: 150
-  eval_start: 90
+  max_epoch: 200
+  eval_start: 150
   eval_frequency: 1 # evaluation interval (in epoch)
   save_frequency: 1 # checkpoint save interval (in epoch)
   disp_frequency: 50 # display interval (in batch)
-  log_dir: 'work_dirs/kitti_models/logs/only_car_lrru_clip_auto_weight_3'
-  out_dir: 'work_dirs/kitti_models/output/only_car_lrru_clip_auto_weight_3'
+  log_dir: 'work_dirs/kitti_models/logs/only_car_lrru_clip_keypoint_onecycle_1'
+  out_dir: 'work_dirs/kitti_models/output/only_car_lrru_clip_keypoint_onecycle_1'
 tester:
   threshold: 0.2  # confidence filter
   out_dir: './tmp_test/test'

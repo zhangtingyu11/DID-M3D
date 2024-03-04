@@ -55,7 +55,7 @@ def main():
     optimizer = build_optimizer(cfg['optimizer'], model)
 
     # build lr & bnm scheduler
-    lr_scheduler, warmup_lr_scheduler = build_lr_scheduler(cfg['lr_scheduler'], optimizer, last_epoch=-1)
+    lr_scheduler, warmup_lr_scheduler = build_onecycle_lr_schduler(cfg['lr_scheduler'], optimizer, last_epoch=-1)
     trainer = Trainer(cfg=cfg,
                       model=model,
                       optimizer=optimizer,
