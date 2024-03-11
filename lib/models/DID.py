@@ -74,15 +74,15 @@ class DID(nn.Module):
 
         self.offset_3d = nn.Sequential(nn.Conv2d(channels[self.first_level]+2+self.cls_num, self.head_conv, kernel_size=3, padding=1, bias=True),
                                      nn.BatchNorm2d(self.head_conv),
-                                     nn.ReLU(inplace=True),nn.AdaptiveAvgPool2d(1),
+                                     nn.ReLU(inplace=True),
                                      nn.Conv2d(self.head_conv, 2, kernel_size=1, stride=1, padding=0, bias=True))
         self.size_3d = nn.Sequential(nn.Conv2d(channels[self.first_level]+2+self.cls_num, self.head_conv, kernel_size=3, padding=1, bias=True),
                                      nn.BatchNorm2d(self.head_conv),
-                                     nn.ReLU(inplace=True),nn.AdaptiveAvgPool2d(1),
+                                     nn.ReLU(inplace=True),
                                      nn.Conv2d(self.head_conv, 3, kernel_size=1, stride=1, padding=0, bias=True))
         self.heading = nn.Sequential(nn.Conv2d(channels[self.first_level]+2+self.cls_num, self.head_conv, kernel_size=3, padding=1, bias=True),
                                      nn.BatchNorm2d(self.head_conv),
-                                     nn.ReLU(inplace=True),nn.AdaptiveAvgPool2d(1),
+                                     nn.ReLU(inplace=True),
                                      nn.Conv2d(self.head_conv, 24, kernel_size=1, stride=1, padding=0, bias=True))
 
         self.vis_depth = nn.Sequential(nn.Conv2d(channels[self.first_level]+2+self.cls_num, self.head_conv, kernel_size=3, padding=1, bias=True),
@@ -98,6 +98,13 @@ class DID(nn.Module):
                                              nn.LeakyReLU(inplace=True),
                                              nn.Conv2d(self.head_conv, 1, kernel_size=1, stride=1, padding=0, bias=True))
 
+        encoderlayer = nn.TransformerEncoderLayer(channels[self.first_level], 8, batch_first=True)
+        self.encoder = nn.TransformerEncoder(encoderlayer, 6)
+        
+        self.attention = nn.Sequential(nn.Conv2d(channels[self.first_level]+2+self.cls_num, self.head_conv, kernel_size=3, padding=1, bias=True),
+                                             nn.LeakyReLU(inplace=True),
+                                             nn.Conv2d(self.head_conv, 1, kernel_size=1, stride=1, padding=0, bias=True))
+        self.sig = nn.Sigmoid()
 
         # init layers
         self.heatmap[-1].bias.data.fill_(-2.19)
@@ -118,6 +125,9 @@ class DID(nn.Module):
             for m in head.modules():
                 if isinstance(m, nn.Conv2d):
                     normal_init(m, std=0.001)
+        self.attention.apply(weights_init_xavier)
+        
+
 
     def forward(self, input, coord_ranges,calibs, targets=None, K=50, mode='train'):
         # for idx, flag in enumerate(targets["random_crop_flag"]):
@@ -201,10 +211,25 @@ class DID(nn.Module):
             cls_hots = torch.zeros(num_masked_bin,self.cls_num).to(device_id)
             cls_hots[torch.arange(num_masked_bin).to(device_id),cls_ids[mask].long()] = 1.0
             
+            batch_size, feature_dim, *roi_size = roi_feature_masked.shape
+            roi_feature_masked = roi_feature_masked.view(batch_size, -1, feature_dim).contiguous()
+            attr_roi_feature_masked = self.encoder(roi_feature_masked)
+            roi_feature_masked = roi_feature_masked+attr_roi_feature_masked
+            
+            roi_feature_masked = roi_feature_masked.view(batch_size, feature_dim, *roi_size)
+            
             roi_feature_masked = torch.cat([roi_feature_masked,coord_maps,cls_hots.unsqueeze(-1).unsqueeze(-1).repeat([1,1,7,7])],1)
 
+            attention = self.attention(roi_feature_masked)
+            attention = self.sig(attention)
+            att_roi_feature_masked = roi_feature_masked * attention
+            roi_feature_masked = roi_feature_masked + att_roi_feature_masked
+            
             #compute 3d dimension offset
-            size3d_offset = self.size_3d(roi_feature_masked)[:,:,0,0]
+            size3d_offset = self.size_3d(roi_feature_masked)
+            size3d_offset = size3d_offset * attention
+            attention_sum = torch.sum(attention.view(attention.shape[0], attention.shape[1], -1), dim=-1)
+            size3d_offset = torch.sum(size3d_offset.view(size3d_offset.shape[0], size3d_offset.shape[1], -1), dim=-1)/attention_sum
 
             #compute scale factor
             scale_depth = torch.clamp((scale_box2d_masked[:,4]-scale_box2d_masked[:,2])*4, min=1.0) / \
@@ -223,7 +248,10 @@ class DID(nn.Module):
             ins_depth_uncer = torch.logsumexp(torch.stack([vis_depth_uncer, att_depth_uncer], -1), -1)
 
             res['train_tag'] = torch.ones(num_masked_bin).type(torch.bool).to(device_id)
-            res['heading'] = self.heading(roi_feature_masked)[:,:,0,0]
+            heading = self.heading(roi_feature_masked)
+            heading = heading * attention
+            heading = torch.sum(heading.view(heading.shape[0], heading.shape[1], -1), dim=-1)/attention_sum
+            res['heading'] = heading
 
             res['vis_depth'] = vis_depth
             res['att_depth'] = att_depth
@@ -233,8 +261,12 @@ class DID(nn.Module):
             res['att_depth_uncer'] = att_depth_uncer
             res['ins_depth_uncer'] = ins_depth_uncer
 
+            offset_3d = self.offset_3d(roi_feature_masked)
+            offset_3d = offset_3d * attention
+            offset_3d = torch.sum(offset_3d.view(offset_3d.shape[0], offset_3d.shape[1], -1), dim=-1)/attention_sum
 
-            res['offset_3d'] = self.offset_3d(roi_feature_masked)[:,:,0,0]
+            res['offset_3d'] = offset_3d
+            
             res['size_3d']= size3d_offset
 
         else:

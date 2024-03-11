@@ -5,6 +5,7 @@ from email.header import Header
 import re
 import socks
 import random
+import torch
 def replace_numbers(input_string, replacement_number):
     # 使用正则表达式匹配字符串中的数字
     result = re.sub(r'\d+', str(replacement_number), input_string)
@@ -53,7 +54,7 @@ def send_email(easy, mod, hard, map, res):
     if res == 0:
         body = "当前各个难度的AP为({}, {}, {}), mAP为{}".format(easy, mod, hard, map)
     else:
-        body = "程序出错啦, 当前各个难度的AP为({}, {}, {}), mAP为{}".format(easy, mod, hard, map)
+        body = "程序出错啦"
         
     
     # 创建 MIMEText 对象
