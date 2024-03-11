@@ -11,6 +11,7 @@ import cv2 as cv
 import torchvision.ops.roi_align as roi_align
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
+import matplotlib.ticker as ticker
 
 def affine_transform(pt, t):
     new_pt = np.array([pt[0], pt[1], 1.], dtype=np.float32).T
@@ -20,7 +21,7 @@ class DrawRoiDepthGT:
     def __init__(self):
         self.resolution = np.array([1280, 384])
         self.downsample = 4
-        root_dir = '/home/public/zty/Project/DeepLearningProject/DID-M3D'
+        root_dir = '/home/zty/Project/DeepLearning/DID-M3D'
         self.image_dir = os.path.join(root_dir, "data/KITTI3D/training/image_2")
         self.label_dir = os.path.join(root_dir, "data/KITTI3D/training/label_2")
         
@@ -33,7 +34,7 @@ class DrawRoiDepthGT:
     def read_depth_img_and_raw_image(self, index):
         raw_image = self.get_image(index)
         img_size = np.array(raw_image.size)
-        d = cv2.imread('{}/{:0>6}.png'.format("/home/public/zty/Project/DeepLearningProject/DID-M3D/data/KITTI3D/training/depth_dense_lrru_my_version_2.0clip", index), -1) / 256.
+        d = cv2.imread('{}/{:0>6}.png'.format("/home/zty/Project/DeepLearning/DID-M3D/data/KITTI3D/training/depth_dense_lrru_my_version_2.0clip", index), -1) / 256.
         dst_W, dst_H = img_size
         center = np.array(img_size) / 2
         crop_size = img_size
@@ -77,23 +78,28 @@ class DrawRoiDepthGT:
             cv2.imwrite("cropped_depth.png", cropped_depth)
             center_depth = roi_depth[3, 3]
             depth_offset = np.abs(center_depth-roi_depth)
+            
+            cmap = plt.cm.RdBu  # 选择颜色映射，这里使用红蓝颜色映射
             norm = Normalize(vmin=np.min(depth_offset), vmax=np.max(depth_offset))
-            colors = plt.cm.viridis(norm(depth_offset))
 
             # 创建图像并显示
-            plt.imshow(colors, cmap='viridis', interpolation='nearest')
-            plt.colorbar(label='Depth')
+            plt.imshow(depth_offset, cmap=cmap, norm=norm, interpolation='nearest')
+            cb = plt.colorbar()
 
+            tick_locator = ticker.MaxNLocator(nbins=5)  # colorbar上的刻度值个数
+            cb.locator = tick_locator
+            cb.set_ticks([np.min(depth_offset), np.max(depth_offset)])
+            cb.update_ticks()
+            cb.ax.tick_params(size=0)
             # 可选：在每个像素位置显示深度值
-            for i in range(roi_depth.shape[0]):
-                for j in range(roi_depth.shape[1]):
+            for i in range(depth_offset.shape[0]):
+                for j in range(depth_offset.shape[1]):
                     plt.text(j, i, f'{depth_offset[i, j]:.2f}', color='black',
                             ha='center', va='center', fontsize=8)
-
-            plt.title('Pseudocolor Depth Map')
-            plt.show()
-            
-            
+            plt.axis('off') # 去坐标轴
+            plt.xticks([]) # 去刻度
+            plt.yticks([]) # 去刻度
+            plt.savefig("visual_depth_2.png", bbox_inches='tight', pad_inches = 0)
             break
         
     def get_bbox2d(self, index):
@@ -111,4 +117,4 @@ class DrawRoiDepthGT:
     
 if __name__ == "__main__":
     drdg = DrawRoiDepthGT()
-    drdg.read_depth_img_and_raw_image(2)
+    drdg.read_depth_img_and_raw_image(7461)
