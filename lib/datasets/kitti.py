@@ -24,6 +24,9 @@ from lib.datasets.kitti_utils import Object3d
 
 from shapely.geometry import MultiPoint, box
 from typing import *
+from numpy import random
+import mmcv
+import cv2
 
 
 
@@ -148,6 +151,10 @@ class KITTI(data.Dataset):
 
         # others
         self.downsample = 4
+        self.brightness_delta = 32
+        self.contrast_lower, self.contrast_upper = (0.5, 1.5)
+        self.saturation_lower, self.saturation_upper = (0.5, 1.5)
+        self.hue_delta = 18
 
     def get_image(self, idx):
         img_file = os.path.join(self.image_dir, '%06d.png' % idx)
@@ -189,12 +196,60 @@ class KITTI(data.Dataset):
         random_crop_flag, random_flip_flag = False, False
 
         if self.data_augmentation:
+            # #! 增加新的数据增强方法
+            # img = np.array(img)
+            # img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            # if random.randint(2):
+            #     delta = random.uniform(-self.brightness_delta,
+            #                         self.brightness_delta)
+            #     img += delta
+
+            # # mode == 0 --> do random contrast first
+            # # mode == 1 --> do random contrast last
+            # mode = random.randint(2)
+            # if mode == 1:
+            #     if random.randint(2):
+            #         alpha = random.uniform(self.contrast_lower,
+            #                             self.contrast_upper)
+            #         img *= alpha
+
+            # # convert color from BGR to HSV
+            # img = mmcv.bgr2hsv(img)
+
+            # # random saturation
+            # if random.randint(2):
+            #     img[..., 1] *= random.uniform(self.saturation_lower,
+            #                                 self.saturation_upper)
+
+            # # random hue
+            # if random.randint(2):
+            #     img[..., 0] += random.uniform(-self.hue_delta, self.hue_delta)
+            #     img[..., 0][img[..., 0] > 360] -= 360
+            #     img[..., 0][img[..., 0] < 0] += 360
+
+            # # convert color from HSV to BGR
+            # img = mmcv.hsv2bgr(img)
+
+            # # random contrast
+            # if mode == 0:
+            #     if random.randint(2):
+            #         alpha = random.uniform(self.contrast_lower,
+            #                             self.contrast_upper)
+            #         img *= alpha
+
+            # # randomly swap channels
+            # if random.randint(2):
+            #     img = img[..., random.permutation(3)]
+            # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            # img = Image.fromarray(img)
+
             if np.random.random() < self.random_flip:
                 random_flip_flag = True
                 img = img.transpose(Image.FLIP_LEFT_RIGHT)
                 d = d.transpose(Image.FLIP_LEFT_RIGHT)
 
             if np.random.random() < self.random_crop:
+                random_crop_flag = True
                 crop_size = img_size * np.clip(np.random.randn()*self.scale + 1, 1 - self.scale, 1 + self.scale)
                 center[0] += img_size[0] * np.clip(np.random.randn() * self.shift, -2 * self.shift, 2 * self.shift)
                 center[1] += img_size[1] * np.clip(np.random.randn() * self.shift, -2 * self.shift, 2 * self.shift)
@@ -216,6 +271,9 @@ class KITTI(data.Dataset):
 
         coord_range = np.array([center-crop_size/2,center+crop_size/2]).astype(np.float32)
         # image encoding
+        # if random_crop_flag:
+        #     cv2.imwrite("input_loader.png", np.array(img))
+            # exit(0)
         img = np.array(img).astype(np.float32) / 255.0
         img = (img - self.mean) / self.std
         img = img.transpose(2, 0, 1)  # C * H * W
@@ -299,8 +357,8 @@ class KITTI(data.Dataset):
                 # generate the center of gaussian heatmap [optional: 3d center or 2d center]
                 center_heatmap = center_3d.astype(np.int32) if self.use_3d_center else center_2d.astype(np.int32)
 
-                if center_heatmap[0] < 0 or center_heatmap[0] >= features_size[0]: continue
-                if center_heatmap[1] < 0 or center_heatmap[1] >= features_size[1]: continue
+                if center_heatmap[0] < max(0, coord_range[0][0]/self.downsample) or center_heatmap[0] >= min(coord_range[1][0], features_size[0]): continue
+                if center_heatmap[1] < max(0, coord_range[0][1]/self.downsample) or center_heatmap[1] >= min(coord_range[1][1], features_size[1]): continue
     
                 # generate the radius of gaussian heatmap
                 w, h = bbox_2d[2] - bbox_2d[0], bbox_2d[3] - bbox_2d[1]
@@ -352,15 +410,15 @@ class KITTI(data.Dataset):
 
                 #! 关键点数据
                 loc = objects[i].pos[np.newaxis, :]
-                dim = np.array([objects[i].h, objects[i].w, objects[i].l])[np.newaxis, :]
+                dim = np.array([objects[i].l, objects[i].h, objects[i].w])[np.newaxis, :]
                 rotation_y = np.array([objects[i].ry])[np.newaxis, :]
                 dst = np.array([0.5, 0.5, 0.5])
                 src = np.array([0.5, 1.0, 0.5])
                 loc = loc + dim * (dst - src)
                 offset = (calib.P2[0, 3] - calib.P0[0, 3]) \
                     / calib.P2[0, 0]
-                loc_3d = np.copy(loc)
-                loc_3d[0, 0] += offset
+                # loc_3d = np.copy(loc)
+                # loc_3d[0, 0] += offset
                 gt_bbox_3d = np.concatenate([loc, dim, rotation_y], axis=1).astype(np.float32)
                 corners_3d = center_to_corner_box3d(
                     gt_bbox_3d[:, :3],
@@ -382,11 +440,13 @@ class KITTI(data.Dataset):
                 camera_intrinsic = np.concatenate([camera_intrinsic, np.array([[0, 0, 0, 1]])], axis=0)
                 corner_coords = view_points(corners_3d, camera_intrinsic,
                                             True).T[:, :2].tolist()
+                corner_coords = [affine_transform(corner_coord, trans) for corner_coord in corner_coords]
                 all_corner_coords = view_points(all_corners_3d, camera_intrinsic, True).T[:, :2]
+                all_corner_coords = [affine_transform(corner_coord, trans) for corner_coord in all_corner_coords]
                 all_corner_coords = np.hstack([all_corner_coords, valid_corners_mask])
 
                 # Keep only corners that fall within the image.
-                final_coords = post_process_coords(corner_coords, (1248, 384))
+                final_coords = post_process_coords(corner_coords, self.resolution)
 
                 # Skip if the convex hull of the re-projected corners
                 # does not intersect the image canvas.
@@ -396,6 +456,7 @@ class KITTI(data.Dataset):
                 center3d = np.array(objects[i].pos).reshape([1, 3])
                 center2d = points_cam2img(
                     center3d, camera_intrinsic, with_depth=True)
+                center2d[0][:2] = affine_transform(center2d[0][:2], trans)
                 if center2d[0][2] <= 0:
                     continue
                 center2d_valid = center2d.copy()
@@ -403,9 +464,23 @@ class KITTI(data.Dataset):
                 projected_pts = np.concatenate([all_corner_coords, center2d_valid])
                 for kpt_idx in range(len(projected_pts)):
                     kptx, kpty, vis = projected_pts[kpt_idx]
-                    is_kpt_in_image = (0 <= kptx <= self.resolution[0]) and (0 <= kpty <= self.resolution[1])
+                    is_kpt_in_image = (max(0, coord_range[0][0]) <= kptx <= min(coord_range[1][0], self.resolution[0])) and \
+                        (max(0, coord_range[0][1]) <= kpty <= min(coord_range[1][1], self.resolution[1]))
                     if is_kpt_in_image:
                         projected_pts[kpt_idx, 2] = 2
+                # if random_crop_flag:
+                #     new_img = np.array(img)
+                #     new_img = new_img.transpose(1, 2, 0) 
+                #     new_img = (new_img*self.std) + self.mean
+                #     new_img = (new_img*255).astype(np.uint8)
+                #     flag = False
+                #     for x, y, z in projected_pts:
+                #         if (0 <= x <= self.resolution[0]) and (0 <= y <= self.resolution[1]) and ((x < coord_range[0][0]) or (x > coord_range[1][0])):
+                #             flag = True
+                #         new_img = cv2.circle(new_img, (int(x), int(y)), 3, (0, 255, 0), 2)
+                #     if flag:
+                #         cv2.imwrite("affine.png", new_img)
+                #         exit(0)
                 kpts_2d = np.array(projected_pts.reshape(-1, 3))
                 kpts_valid_mask = kpts_2d[:, 2].astype('int64')
                 kpts_2d = kpts_2d[:, :2].astype('float32').reshape(-1)
@@ -431,7 +506,7 @@ class KITTI(data.Dataset):
                     center2kpt_offset_target[i, k * 2 + 1] = kpty - cty_int
                     mask_center2kpt_offset[i, k * 2:k * 2 + 2] = 1
 
-                    is_kpt_inside_image = (0 <= kptx_int < feat_w) and (0 <= kpty_int < feat_h)
+                    is_kpt_inside_image = (max(0, coord_range[0][0]/self.downsample) <= kptx_int < min(coord_range[1][0]/self.downsample, feat_w)) and (max(0, coord_range[0][1]/self.downsample) <= kpty_int < min(coord_range[1][1]/self.downsample, feat_h))
                     if not is_kpt_inside_image:
                         continue
 

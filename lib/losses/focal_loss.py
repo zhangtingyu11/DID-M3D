@@ -41,7 +41,7 @@ def focal_loss_cornernet(input, target, gamma=2.):
         gamma: hyper param, default in 2.0
     Reference: Cornernet: Detecting Objects as Paired Keypoints, ECCV'18
     '''
-
+    eps = 1e-12
     pos_inds = target.eq(1).float()
     neg_inds = target.lt(1).float()
 
@@ -49,8 +49,8 @@ def focal_loss_cornernet(input, target, gamma=2.):
 
     loss = 0
 
-    pos_loss = torch.log(input) * torch.pow(1 - input, gamma) * pos_inds
-    neg_loss = torch.log(1 - input) * torch.pow(input, gamma) * neg_inds * neg_weights
+    pos_loss = torch.log(input+eps) * torch.pow(1 - input, gamma) * pos_inds
+    neg_loss = torch.log(1 - input+eps) * torch.pow(input, gamma) * neg_inds * neg_weights
 
     num_pos = pos_inds.float().sum()
 

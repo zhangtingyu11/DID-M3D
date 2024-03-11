@@ -7,7 +7,7 @@ from lib.backbones.resnet import resnet50
 from lib.backbones.dla import dla34
 from lib.backbones.dlaup import DLAUp
 from lib.backbones.dlaup import DLAUpv2
-
+import cv2
 import torchvision.ops.roi_align as roi_align
 from lib.losses.loss_function import extract_input_from_tensor
 from lib.helpers.decode_helper import _topk,_nms
@@ -53,6 +53,9 @@ class DID(nn.Module):
         self.heatmap = nn.Sequential(nn.Conv2d(channels[self.first_level], self.head_conv, kernel_size=3, padding=1, bias=True),
                                      nn.ReLU(inplace=True),
                                      nn.Conv2d(self.head_conv, 3, kernel_size=1, stride=1, padding=0, bias=True))
+        self.kpt_heatmap_head = nn.Sequential(nn.Conv2d(channels[self.first_level], self.head_conv, kernel_size=3, padding=1, bias=True),
+                                nn.ReLU(inplace=True),
+                                nn.Conv2d(self.head_conv, 9, kernel_size=1, stride=1, padding=0, bias=True))
         self.offset_2d = nn.Sequential(nn.Conv2d(channels[self.first_level], self.head_conv, kernel_size=3, padding=1, bias=True),
                                      nn.ReLU(inplace=True),
                                      nn.Conv2d(self.head_conv, 2, kernel_size=1, stride=1, padding=0, bias=True))
@@ -63,10 +66,7 @@ class DID(nn.Module):
                                      nn.BatchNorm2d(self.head_conv),
                                      nn.ReLU(inplace=True),
                                      nn.Conv2d(self.head_conv, 9*2, kernel_size=1, stride=1, padding=0, bias=True))
-        self.kpt_heatmap_head = nn.Sequential(nn.Conv2d(channels[self.first_level], self.head_conv, kernel_size=3, padding=1, bias=True),
-                                     nn.BatchNorm2d(self.head_conv),
-                                     nn.ReLU(inplace=True),
-                                     nn.Conv2d(self.head_conv, 9, kernel_size=1, stride=1, padding=0, bias=True))
+
         self.kpt_heatmap_offset_head = nn.Sequential(nn.Conv2d(channels[self.first_level], self.head_conv, kernel_size=3, padding=1, bias=True),
                                      nn.BatchNorm2d(self.head_conv),
                                      nn.ReLU(inplace=True),
@@ -120,6 +120,17 @@ class DID(nn.Module):
                     normal_init(m, std=0.001)
 
     def forward(self, input, coord_ranges,calibs, targets=None, K=50, mode='train'):
+        # for idx, flag in enumerate(targets["random_crop_flag"]):
+        #     if flag:
+        #         img = input[idx]
+        #         img = torch.permute(img, (1, 2, 0))
+        #         img = img.detach().cpu().numpy()
+        #         self.mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+        #         self.std  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+        #         img = (img * self.std) + self.mean
+        #         img = (img * 255).astype(np.uint8)
+        #         cv2.imwrite("input.png", img)
+        #         exit(0)
         device_id = input.device
         feat = self.backbone(input)
         feat = self.feat_up(feat[self.first_level:])

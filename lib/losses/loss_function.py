@@ -51,13 +51,13 @@ class Hierarchical_Task_Learning:
         self.loss_graph = {'seg_loss':[],
                            'size2d_loss':[], 
                            'offset2d_loss':[],
-                           'kpt_seg_loss':[], 
-                           'center2kpt_offset_loss':[], 
-                           'kpt_heatmap_offset_loss':[], 
                            'offset3d_loss':['size2d_loss','offset2d_loss'],
                            'size3d_loss':['size2d_loss','offset2d_loss'], 
                            'heading_loss':['size2d_loss','offset2d_loss'], 
-                           'depth_loss':['size2d_loss','size3d_loss','offset2d_loss']}
+                           'depth_loss':['size2d_loss','size3d_loss','offset2d_loss'],
+                           'kpt_seg_loss':['size2d_loss','size3d_loss','offset2d_loss'], 
+                           'center2kpt_offset_loss':['size2d_loss','size3d_loss','offset2d_loss'], 
+                           'kpt_heatmap_offset_loss':['size2d_loss','size3d_loss','offset2d_loss'], }
 
     def compute_weight(self,current_loss,epoch):
         T=140
