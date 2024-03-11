@@ -79,10 +79,10 @@ class Trainer(object):
             self.epoch += 1
             
             # update learning rate
-            # if self.warmup_lr_scheduler is not None and epoch < 5:
-            #     self.warmup_lr_scheduler.step()
-            # else:
-            #     self.lr_scheduler.step()
+            if self.warmup_lr_scheduler is not None and epoch < 5:
+                self.warmup_lr_scheduler.step()
+            elif self.warmup_lr_scheduler is not None and epoch >= 5:
+                self.lr_scheduler.step()
 
             if ((self.epoch % self.cfg_train['eval_frequency']) == 0 and \
                 self.epoch >= self.cfg_train['eval_start']):
@@ -99,6 +99,11 @@ class Trainer(object):
                     with open(os.path.join(self.cfg_train['log_dir']+'/checkpoints', 'best_checkpoint.txt'), 'w') as f:
                         f.write(str(self.epoch))
                     best_mean = (res[0]+res[1]+res[2])/3
+            if self.epoch == self.cfg_train['max_epoch']-1:
+                ckpt_name = os.path.join(self.cfg_train['log_dir']+'/checkpoints', 'last_checkpoint')
+                save_checkpoint(get_checkpoint_state(self.model, self.optimizer, self.epoch), ckpt_name, self.logger)
+                with open(os.path.join(self.cfg_train['log_dir']+'/checkpoints', 'last_checkpoint.txt'), 'w') as f:
+                    f.write(str(self.epoch))
         # with open(self.pickle_file, 'wb') as f:
         #     pickle.dump(self.pickle_info, f)
         return None
@@ -206,7 +211,8 @@ class Trainer(object):
                     log_str += ' %s:%.4f,' %(key, disp_dict[key])
                     disp_dict[key] = 0  # reset statistics
                 self.logger.info(log_str)
-            self.lr_scheduler.step()
+            if self.warmup_lr_scheduler is None:
+                self.lr_scheduler.step()
                 
         for key in stat_dict.keys():
             stat_dict[key] /= trained_batch
