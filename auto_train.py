@@ -49,7 +49,7 @@ def send_email(easy, mod, hard, map, res):
     password = "SNOYAHKUJNPWATEF"
 
     # 邮件内容
-    subject = "使用LRRU的深度补全结果(去掉<2.0的深度, 增加关键点预测, onecycle"
+    subject = "使用LRRU的深度补全结果(去掉<2.0的深度, 增加关键点预测, 200轮"
     if res == 0:
         body = "当前各个难度的AP为({}, {}, {}), mAP为{}".format(easy, mod, hard, map)
     else:
@@ -62,18 +62,19 @@ def send_email(easy, mod, hard, map, res):
     message["From"] = sender_email
     message["To"] = receiver_email
     # 连接到网易邮箱 SMTP 服务器
-    socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, '127.0.0.1', 52119)
+    # socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, '127.0.0.1', 20171)
     
-    socks.wrapmodule(smtplib)
+    # socks.wrapmodule(smtplib)
     with smtplib.SMTP("smtp.163.com", 25) as server:
         server.login(sender_email, password)
         server.sendmail(sender_email, receiver_email, message.as_string())
 
 if __name__ == "__main__":
-    for idx in range(1, 100):
-        change_yaml_name('/home/public/zty/Project/DeepLearningProject/DID-M3D/config/kitti_car.yaml', idx)
-        res = os.system('CUDA_VISIBLE_DEVICES=0,1 python tools/train_val.py --config config/kitti_car.yaml')
-        log_filename = '/home/public/zty/Project/DeepLearningProject/DID-M3D/work_dirs/kitti_models/logs/only_car_lrru_clip_keypoint_onecycle_{}/train.log'.format(idx)
+    for idx in range(2, 100):
+        change_yaml_name('/home/zty/Project/DeepLearning/DID-M3D/config/kitti_car.yaml', idx)
+        res = os.system('python tools/train_val.py --config config/kitti_car.yaml')
+        # res = 0
+        log_filename = '/home/zty/Project/DeepLearning/DID-M3D/work_dirs/kitti_models/logs/only_car_lrru_clip_keypoint_right_epoch_two_hundred_{}/train.log'.format(idx)
         if res == 0:
             easy, mod, hard = get_best_3dmod_acc(log_filename)
             send_email(easy, mod, hard, (easy+mod+hard)/3, res)
