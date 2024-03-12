@@ -3,5 +3,6 @@ kitti_models
 __pycache__
 runs
 *.png
+*.svg
 *.pkl
 work_dirs
