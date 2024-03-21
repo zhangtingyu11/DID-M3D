@@ -97,7 +97,23 @@ class DID(nn.Module):
         self.att_depth_uncer = nn.Sequential(nn.Conv2d(channels[self.first_level]+2+self.cls_num, self.head_conv, kernel_size=3, padding=1, bias=True),
                                              nn.LeakyReLU(inplace=True),
                                              nn.Conv2d(self.head_conv, 1, kernel_size=1, stride=1, padding=0, bias=True))
-
+        
+        
+        # self.positional_embedding_level1 = nn.Parameter(torch.zeros(1, 7*7, channels[self.first_level]))
+        # self.positional_embedding_level2 = nn.Parameter(torch.zeros(1, 7*7, channels[self.first_level]))
+        # self.positional_embedding_level3 = nn.Parameter(torch.zeros(1, 7*7, channels[self.first_level]))
+        # nn.init.trunc_normal_(self.positional_embedding_level1, std = .02)
+        # nn.init.trunc_normal_(self.positional_embedding_level2, std = .02)
+        # nn.init.trunc_normal_(self.positional_embedding_level3, std = .02)
+        # self.positional_embedding = [self.positional_embedding_level1]
+        
+        # encoder_layers_level1 = nn.TransformerEncoderLayer(channels[self.first_level], 1, channels[self.first_level], 0.1)
+        # self.transformer_encoder_level1 = nn.TransformerEncoder(encoder_layers_level1, 1)
+        # encoder_layers_level2 = nn.TransformerEncoderLayer(channels[self.first_level], 1, channels[self.first_level], 0.1)
+        # self.transformer_encoder_level2 = nn.TransformerEncoder(encoder_layers_level2, 1)
+        # encoder_layers_level3 = nn.TransformerEncoderLayer(channels[self.first_level], 1, channels[self.first_level], 0.1)
+        # self.transformer_encoder_level3 = nn.TransformerEncoder(encoder_layers_level3, 1)
+        # self.transformer_encoder = [self.transformer_encoder_level1]
 
         # init layers
         self.heatmap[-1].bias.data.fill_(-2.19)
@@ -118,6 +134,10 @@ class DID(nn.Module):
             for m in head.modules():
                 if isinstance(m, nn.Conv2d):
                     normal_init(m, std=0.001)
+        # for transformer in self.transformer_encoder:
+        #     for p in transformer.parameters():
+        #         if p.dim() > 1:
+        #             nn.init.xavier_uniform_(p)
 
     def forward(self, input, coord_ranges,calibs, targets=None, K=50, mode='train'):
         # for idx, flag in enumerate(targets["random_crop_flag"]):
@@ -176,6 +196,8 @@ class DID(nn.Module):
 
         if num_masked_bin!=0:
             #get box2d of each roi region
+            # roi_feature_mask_list = []
+            # for idx, scale in enumerate([1]):
             scale_box2d_masked = extract_input_from_tensor(box2d_maps,inds,mask)
             #get roi feature
             roi_feature_masked = roi_align(feat,scale_box2d_masked,[7,7])
@@ -184,14 +206,14 @@ class DID(nn.Module):
 
             #map box2d coordinate from feature map size domain to original image size domain
             box2d_masked = torch.cat([scale_box2d_masked[:,0:1],
-                       scale_box2d_masked[:,1:2]/WIDE  *(coord_ranges_mask2d[:,1,0:1]-coord_ranges_mask2d[:,0,0:1])+coord_ranges_mask2d[:,0,0:1],
-                       scale_box2d_masked[:,2:3]/HEIGHT*(coord_ranges_mask2d[:,1,1:2]-coord_ranges_mask2d[:,0,1:2])+coord_ranges_mask2d[:,0,1:2],
-                       scale_box2d_masked[:,3:4]/WIDE  *(coord_ranges_mask2d[:,1,0:1]-coord_ranges_mask2d[:,0,0:1])+coord_ranges_mask2d[:,0,0:1],
-                       scale_box2d_masked[:,4:5]/HEIGHT*(coord_ranges_mask2d[:,1,1:2]-coord_ranges_mask2d[:,0,1:2])+coord_ranges_mask2d[:,0,1:2]],1)
+                    scale_box2d_masked[:,1:2]/WIDE  *(coord_ranges_mask2d[:,1,0:1]-coord_ranges_mask2d[:,0,0:1])+coord_ranges_mask2d[:,0,0:1],
+                    scale_box2d_masked[:,2:3]/HEIGHT*(coord_ranges_mask2d[:,1,1:2]-coord_ranges_mask2d[:,0,1:2])+coord_ranges_mask2d[:,0,1:2],
+                    scale_box2d_masked[:,3:4]/WIDE  *(coord_ranges_mask2d[:,1,0:1]-coord_ranges_mask2d[:,0,0:1])+coord_ranges_mask2d[:,0,0:1],
+                    scale_box2d_masked[:,4:5]/HEIGHT*(coord_ranges_mask2d[:,1,1:2]-coord_ranges_mask2d[:,0,1:2])+coord_ranges_mask2d[:,0,1:2]],1)
             roi_calibs = calibs[box2d_masked[:,0].long()]
             #project the coordinate in the normal image to the camera coord by calibs
             coords_in_camera_coord = torch.cat([self.project2rect(roi_calibs,torch.cat([box2d_masked[:,1:3],torch.ones([num_masked_bin,1]).to(device_id)],-1))[:,:2],
-                                          self.project2rect(roi_calibs,torch.cat([box2d_masked[:,3:5],torch.ones([num_masked_bin,1]).to(device_id)],-1))[:,:2]],-1)
+                                        self.project2rect(roi_calibs,torch.cat([box2d_masked[:,3:5],torch.ones([num_masked_bin,1]).to(device_id)],-1))[:,:2]],-1)
             coords_in_camera_coord = torch.cat([box2d_masked[:,0:1],coords_in_camera_coord],-1)
             #generate coord maps
             coord_maps = torch.cat([torch.cat([coords_in_camera_coord[:,1:2]+i*(coords_in_camera_coord[:,3:4]-coords_in_camera_coord[:,1:2])/(7-1) for i in range(7)],-1).unsqueeze(1).repeat([1,7,1]).unsqueeze(1),
@@ -200,8 +222,12 @@ class DID(nn.Module):
             #concatenate coord maps with feature maps in the channel dim
             cls_hots = torch.zeros(num_masked_bin,self.cls_num).to(device_id)
             cls_hots[torch.arange(num_masked_bin).to(device_id),cls_ids[mask].long()] = 1.0
-            
+                # roi_feature_masked = roi_feature_masked.view(roi_feature_masked.shape[0], 7*7, -1).contiguous()
+                # roi_feature_masked = roi_feature_masked + self.positional_embedding[idx]
+                # roi_feature_masked = self.transformer_encoder[idx](roi_feature_masked).view(roi_feature_masked.shape[0], -1, 7, 7).contiguous()
             roi_feature_masked = torch.cat([roi_feature_masked,coord_maps,cls_hots.unsqueeze(-1).unsqueeze(-1).repeat([1,1,7,7])],1)
+                # roi_feature_mask_list.append(roi_feature_masked)
+            # roi_feature_masked = torch.cat(roi_feature_mask_list, dim=1)
 
             #compute 3d dimension offset
             size3d_offset = self.size_3d(roi_feature_masked)[:,:,0,0]
@@ -262,8 +288,11 @@ class DID(nn.Module):
         coord_map = torch.cat([torch.arange(WIDE).unsqueeze(0).repeat([HEIGHT,1]).unsqueeze(0),\
                         torch.arange(HEIGHT).unsqueeze(-1).repeat([1,WIDE]).unsqueeze(0)],0).unsqueeze(0).repeat([BATCH_SIZE,1,1,1]).type(torch.float).to(device_id)
         box2d_centre = coord_map + ret['offset_2d']
+        # scale_box2d_maps = []
+        # for scale in [1]:
         box2d_maps = torch.cat([box2d_centre-ret['size_2d']/2,box2d_centre+ret['size_2d']/2],1)
         box2d_maps = torch.cat([torch.arange(BATCH_SIZE).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat([1,1,HEIGHT,WIDE]).type(torch.float).to(device_id),box2d_maps],1)
+            # scale_box2d_maps.append(box2d_maps)
         #box2d_maps is box2d in each bin
         res = self.get_roi_feat_by_mask(feat,box2d_maps,inds,mask,calibs,coord_ranges,cls_ids)
         return res

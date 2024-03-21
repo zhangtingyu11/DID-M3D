@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from lib.helpers.decode_helper import _transpose_and_gather_feat
-from lib.losses.focal_loss import focal_loss_cornernet as focal_loss
+from lib.losses.focal_loss import focal_loss_cornernet_with_boundary as focal_loss
 from lib.losses.uncertainty_loss import laplacian_aleatoric_uncertainty_loss
 def transpose_and_gather_feat(feat, ind):
     """Transpose and gather feature according to index.
@@ -70,7 +70,8 @@ class Hierarchical_Task_Learning:
             else:
                 loss_weights[term] = torch.tensor(0.0).to(current_loss[term].device) 
         #update losses list
-        if len(self.past_losses)==self.stat_epoch_nums:
+        #TODO 增加轮次, 在前几轮不训练这些loss
+        if len(self.past_losses)==self.stat_epoch_nums and epoch>=10:
             past_loss = torch.cat(self.past_losses)
             mean_diff = (past_loss[:-2]-past_loss[2:]).mean(0)
             if not hasattr(self, 'init_diff'):
@@ -88,6 +89,7 @@ class Hierarchical_Task_Learning:
                         for pre_topic in self.loss_graph[current_topic]:
                             print('NAN===============', time_value, control_weight, c_weights[0][self.term2index[pre_topic]], pre_topic, self.term2index[pre_topic])
             #pop first list
+        if len(self.past_losses)==self.stat_epoch_nums:
             self.past_losses.pop(0)
         self.past_losses.append(eval_loss_input)
 
@@ -131,13 +133,13 @@ class DIDLoss(nn.Module):
 
     def compute_segmentation_loss(self, input, target):
         input['heatmap'] = torch.clamp(input['heatmap'].sigmoid_(), min=1e-4, max=1 - 1e-4)
-        loss = focal_loss(input['heatmap'], target['heatmap'])
+        loss = focal_loss(input['heatmap'], target['heatmap'], target["boundary"])
         self.stat['seg_loss'] = loss
         return loss
     
     def compute_kpt_segmentation_loss(self, input, target):
         input['kpt_heatmap'] = torch.clamp(input['kpt_heatmap'].sigmoid_(), min=1e-4, max=1 - 1e-4)
-        loss = focal_loss(input['kpt_heatmap'], target['kpt_heatmap_target'])
+        loss = focal_loss(input['kpt_heatmap'], target['kpt_heatmap_target'], target["boundary"])
         self.stat['kpt_seg_loss'] = loss
         return loss
 

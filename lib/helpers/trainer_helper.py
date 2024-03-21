@@ -49,6 +49,7 @@ class Trainer(object):
             self.lr_scheduler.last_epoch = self.epoch - 1
 
         self.model = torch.nn.DataParallel(model).to(self.device)
+        self.kpg_seg_loss = None
 
     def train(self):
         best_mean = 0
@@ -160,6 +161,24 @@ class Trainer(object):
             outputs = self.model(inputs,coord_ranges,calibs,targets)
 
             total_loss, loss_terms = criterion(outputs, targets)
+            # if self.kpg_seg_loss is not None and self.kpg_seg_loss < 2 and loss_terms["kpt_seg_loss"] > 9:
+            #     with open("train_phase.pkl", "wb") as f:
+            #         save_outputs = {}
+            #         for key, val in outputs.items():
+            #             save_outputs[key] = val.detach().cpu().numpy()
+            #         save_target = {}
+            #         for key, val in targets.items():
+            #             save_target[key] = val.detach().cpu().numpy()
+            #         input = inputs.detach().cpu().numpy()
+            #         d = {
+            #             "output": save_outputs,
+            #             "target": save_target,
+            #             "input": input
+            #         }
+            #         pickle.dump(d, f)
+            #     # exit(-1)
+            
+            # self.kpg_seg_loss = loss_terms["kpt_seg_loss"]
             # per_batch_info = {}
             # depth_mask = targets["depth_mask"][targets["mask_2d"]]
             # per_batch_info['vis_depth_pred'] = outputs["vis_depth"][outputs["train_tag"]].detach().cpu().numpy()
