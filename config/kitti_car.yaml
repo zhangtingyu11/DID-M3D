@@ -35,12 +35,12 @@ lr_scheduler:
 
 trainer:
   max_epoch: 200
-  eval_start: 150
-  eval_frequency: 1 # evaluation interval (in epoch)
-  save_frequency: 1 # checkpoint save interval (in epoch)
+  eval_start: 10
+  eval_frequency: 10 # evaluation interval (in epoch)
+  save_frequency: 10 # checkpoint save interval (in epoch)
   disp_frequency: 50 # display interval (in batch)
-  log_dir: 'work_dirs/kitti_models/logs/only_car_lrru_clip_keypoint_right_epoch_two_hundred_10'
-  out_dir: 'work_dirs/kitti_models/output/only_car_lrru_clip_keypoint_right_epoch_two_hundred_10'
+  log_dir: 'work_dirs/kitti_models/logs/only_car_lrru_clip_keypoint_right_epoch_two_hundred_monocon_边框范围_withmask_14'
+  out_dir: 'work_dirs/kitti_models/output/only_car_lrru_clip_keypoint_right_epoch_two_hundred_monocon_边框范围_withmask_14'
 tester:
   threshold: 0.2  # confidence filter
   out_dir: './tmp_test/test'

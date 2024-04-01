@@ -49,7 +49,7 @@ def send_email(easy, mod, hard, map, res):
     password = "SNOYAHKUJNPWATEF"
 
     # 邮件内容
-    subject = "使用LRRU的深度补全结果(去掉<2.0的深度, 增加关键点预测, 200轮"
+    subject = "使用LRRU的深度补全结果(去掉<2.0的深度, 增加关键点预测, 200轮, 使用monocon的投影方式"
     if res == 0:
         body = "当前各个难度的AP为({}, {}, {}), mAP为{}".format(easy, mod, hard, map)
     else:
@@ -70,11 +70,11 @@ def send_email(easy, mod, hard, map, res):
         server.sendmail(sender_email, receiver_email, message.as_string())
 
 if __name__ == "__main__":
-    for idx in range(2, 100):
+    for idx in range(0, 100):
         change_yaml_name('/home/zty/Project/DeepLearning/DID-M3D/config/kitti_car.yaml', idx)
         res = os.system('python tools/train_val.py --config config/kitti_car.yaml')
         # res = 0
-        log_filename = '/home/zty/Project/DeepLearning/DID-M3D/work_dirs/kitti_models/logs/only_car_lrru_clip_keypoint_right_epoch_two_hundred_{}/train.log'.format(idx)
+        log_filename = '/home/zty/Project/DeepLearning/DID-M3D/work_dirs/kitti_models/logs/only_car_lrru_clip_keypoint_right_epoch_two_hundred_monocon_边框范围_withmask_{}/train.log'.format(idx)
         if res == 0:
             easy, mod, hard = get_best_3dmod_acc(log_filename)
             send_email(easy, mod, hard, (easy+mod+hard)/3, res)

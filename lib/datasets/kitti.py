@@ -196,53 +196,6 @@ class KITTI(data.Dataset):
         random_crop_flag, random_flip_flag = False, False
 
         if self.data_augmentation:
-            # #! 增加新的数据增强方法
-            # img = np.array(img)
-            # img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-            # if random.randint(2):
-            #     delta = random.uniform(-self.brightness_delta,
-            #                         self.brightness_delta)
-            #     img += delta
-
-            # # mode == 0 --> do random contrast first
-            # # mode == 1 --> do random contrast last
-            # mode = random.randint(2)
-            # if mode == 1:
-            #     if random.randint(2):
-            #         alpha = random.uniform(self.contrast_lower,
-            #                             self.contrast_upper)
-            #         img *= alpha
-
-            # # convert color from BGR to HSV
-            # img = mmcv.bgr2hsv(img)
-
-            # # random saturation
-            # if random.randint(2):
-            #     img[..., 1] *= random.uniform(self.saturation_lower,
-            #                                 self.saturation_upper)
-
-            # # random hue
-            # if random.randint(2):
-            #     img[..., 0] += random.uniform(-self.hue_delta, self.hue_delta)
-            #     img[..., 0][img[..., 0] > 360] -= 360
-            #     img[..., 0][img[..., 0] < 0] += 360
-
-            # # convert color from HSV to BGR
-            # img = mmcv.hsv2bgr(img)
-
-            # # random contrast
-            # if mode == 0:
-            #     if random.randint(2):
-            #         alpha = random.uniform(self.contrast_lower,
-            #                             self.contrast_upper)
-            #         img *= alpha
-
-            # # randomly swap channels
-            # if random.randint(2):
-            #     img = img[..., random.permutation(3)]
-            # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            # img = Image.fromarray(img)
-
             if np.random.random() < self.random_flip:
                 random_flip_flag = True
                 img = img.transpose(Image.FLIP_LEFT_RIGHT)
@@ -281,22 +234,25 @@ class KITTI(data.Dataset):
 
         calib = self.get_calib(index)
         features_size = self.resolution // self.downsample# W * H
+        camera_intrinsic = calib.P2
+        camera_intrinsic = np.concatenate([camera_intrinsic, np.array([[0, 0, 0, 1]])], axis=0)
         #  ============================   get labels   ==============================
         if self.split!='test':
             objects = self.get_label(index)
             # data augmentation for labels
             if random_flip_flag:
-                calib.flip(img_size)
+                # calib.flip(img_size)
                 for object in objects:
                     [x1, _, x2, _] = object.box2d
-                    object.box2d[0],  object.box2d[2] = img_size[0] - x2, img_size[0] - x1
-                    object.ry = np.pi - object.ry
-                    object.pos[0] *= -1
-                    if object.ry > np.pi:  object.ry -= 2 * np.pi
-                    if object.ry < -np.pi: object.ry += 2 * np.pi
+                    object.box2d[0],  object.box2d[2] = img_size[0]-x2-1, img_size[0]-x1-1
+                #     object.ry = np.pi - object.ry
+                #     object.pos[0] *= -1
+                #     if object.ry > np.pi:  object.ry -= 2 * np.pi
+                #     if object.ry < -np.pi: object.ry += 2 * np.pi
             # labels encoding
             feat_w, feat_h = features_size
             heatmap = np.zeros((self.num_classes, features_size[1], features_size[0]), dtype=np.float32) # C * H * W
+            # heatmap_mask = np.zeros((self.num_classes, features_size[1], features_size[0]), dtype=np.bool_) # C * H * W
             size_2d = np.zeros((self.max_objs, 2), dtype=np.float32)
             offset_2d = np.zeros((self.max_objs, 2), dtype=np.float32)
             depth = np.zeros((self.max_objs, 1), dtype=np.float32)
@@ -311,11 +267,16 @@ class KITTI(data.Dataset):
             #! 增加关键点的预测
             center2kpt_offset_target = np.zeros([self.max_objs, self.num_kpt * 2], dtype=np.float32)
             kpt_heatmap_target = np.zeros([self.num_kpt, feat_h, feat_w], dtype=np.float32)
+            # kpt_heatmap_mask_target = np.zeros([self.num_kpt, feat_h, feat_w], dtype=np.bool_)
             kpt_heatmap_offset_target = np.zeros([self.max_objs, self.num_kpt * 2], dtype=np.float32)
             indices_kpt = np.zeros([self.max_objs, self.num_kpt], dtype=np.int64)
             mask_center2kpt_offset =  np.zeros([self.max_objs, self.num_kpt * 2], dtype=np.float32)
             mask_kpt_heatmap_offset = np.zeros([self.max_objs, self.num_kpt * 2], dtype=np.float32)
-            
+            # * 计算图像的边界经过affine_transform之后的坐标
+            # x1, y1 = affine_transform([0,0], trans)
+            # x2, y2 = affine_transform(img_size, trans)
+            # boundary = np.array([max(0, x1), max(0, y1), min(self.resolution[0]-1, x2), min(self.resolution[1]-1, y2)], dtype = np.float32)
+
             # if torch.__version__ == '1.10.0+cu113':
             if torch.__version__ in ['1.10.0+cu113', '1.10.0', '1.6.0', '1.4.0']:
                 mask_2d = np.zeros((self.max_objs), dtype=np.bool_)
@@ -326,7 +287,8 @@ class KITTI(data.Dataset):
             vis_depth = np.zeros((self.max_objs, 7, 7), dtype=np.float32)
             att_depth = np.zeros((self.max_objs, 7, 7), dtype=np.float32)
             depth_mask = np.zeros((self.max_objs, 7, 7), dtype=np.bool_)
-
+            # heatmap_mask[:, int(boundary[1]/self.downsample):int((boundary[3]+1)/self.downsample), int(boundary[0]/self.downsample):int((boundary[2]+1)/self.downsample)] = 1
+            # kpt_heatmap_mask_target[:, int(boundary[1]/self.downsample):int((boundary[3]+1)/self.downsample), int(boundary[0]/self.downsample):int((boundary[2]+1)/self.downsample)] = 1
             for i in range(object_num):
                 # filter objects by writelist
                 if objects[i].cls_type not in self.writelist:
@@ -341,25 +303,42 @@ class KITTI(data.Dataset):
                 # add affine transformation for 2d boxes.
                 bbox_2d[:2] = affine_transform(bbox_2d[:2], trans)
                 bbox_2d[2:] = affine_transform(bbox_2d[2:], trans)
-                # modify the 2d bbox according to pre-compute downsample ratio
                 bbox_2d[:] /= self.downsample
-
 
                 # process 3d bbox & get 3d center
                 center_2d = np.array([(bbox_2d[0] + bbox_2d[2]) / 2, (bbox_2d[1] + bbox_2d[3]) / 2], dtype=np.float32)  # W * H
                 center_3d = objects[i].pos + [0, -objects[i].h / 2, 0]  # real 3D center in 3D space
                 center_3d = center_3d.reshape(-1, 3)  # shape adjustment (N, 3)
-                center_3d, _ = calib.rect_to_img(center_3d)  # project 3D center to image plane
+                center_3d = view_points(center_3d.T, camera_intrinsic,
+                                    True).T[:, :2]
+                # center_3d, _ = calib.rect_to_img(center_3d)  # project 3D center to image plane
+                if random_flip_flag:
+                    center_3d[..., 0::2] = img_size[0] -  center_3d[..., 0::2] - 1
                 center_3d = center_3d[0]  # shape adjustment
                 center_3d = affine_transform(center_3d.reshape(-1), trans)
+                # if random_flip_flag and random_crop_flag:
+                #     new_img = np.array(img)
+                #     new_img = new_img.transpose(1, 2, 0) 
+                #     new_img = (new_img*self.std) + self.mean
+                #     new_img = (new_img*255).astype(np.uint8)
+                #     flag = False
+                #     x, y = center_3d
+                #     if (0 <= x <= self.resolution[0]) and (0 <= y <= self.resolution[1]) and ((x < coord_range[0][0]) or (x > coord_range[1][0])):
+                #         flag = True
+                #     new_img = cv2.circle(new_img, (int(x), int(y)), 3, (0, 255, 0), 2)
+                #     if flag:
+                #         print(index)
+                #         cv2.imwrite("affine.png", new_img)
+                #         exit(0)
+                # modify the 2d bbox according to pre-compute downsample ratio
+                
                 center_3d /= self.downsample
 
                 # generate the center of gaussian heatmap [optional: 3d center or 2d center]
                 center_heatmap = center_3d.astype(np.int32) if self.use_3d_center else center_2d.astype(np.int32)
-
-                if center_heatmap[0] < max(0, coord_range[0][0]/self.downsample) or center_heatmap[0] >= min(coord_range[1][0], features_size[0]): continue
-                if center_heatmap[1] < max(0, coord_range[0][1]/self.downsample) or center_heatmap[1] >= min(coord_range[1][1], features_size[1]): continue
-    
+                
+                if center_heatmap[0] < boundary[0]/self.downsample or center_heatmap[0] > boundary[2]/self.downsample: continue
+                if center_heatmap[1] < boundary[1]/self.downsample or center_heatmap[1] > boundary[3]/self.downsample: continue
                 # generate the radius of gaussian heatmap
                 w, h = bbox_2d[2] - bbox_2d[0], bbox_2d[3] - bbox_2d[1]
                 radius = gaussian_radius((w, h))
@@ -383,7 +362,12 @@ class KITTI(data.Dataset):
     
                 # encoding heading angle
                 #heading_angle = objects[i].alpha
-                heading_angle = calib.ry2alpha(objects[i].ry, (objects[i].box2d[0]+objects[i].box2d[2])/2)
+                rotation_y = objects[i].ry
+                if random_flip_flag:
+                    rotation_y= np.pi - rotation_y
+                    if rotation_y > np.pi:  rotation_y -= 2 * np.pi
+                    if rotation_y < -np.pi: rotation_y += 2 * np.pi
+                heading_angle = calib.ry2alpha(rotation_y, (objects[i].box2d[0]+objects[i].box2d[2])/2)
                 if heading_angle > np.pi:  heading_angle -= 2 * np.pi  # check range
                 if heading_angle < -np.pi: heading_angle += 2 * np.pi
                 heading_bin[i], heading_res[i] = angle2class(heading_angle)
@@ -415,8 +399,8 @@ class KITTI(data.Dataset):
                 dst = np.array([0.5, 0.5, 0.5])
                 src = np.array([0.5, 1.0, 0.5])
                 loc = loc + dim * (dst - src)
-                offset = (calib.P2[0, 3] - calib.P0[0, 3]) \
-                    / calib.P2[0, 0]
+                # offset = (calib.P2[0, 3] - calib.P0[0, 3]) \
+                #     / calib.P2[0, 0]
                 # loc_3d = np.copy(loc)
                 # loc_3d[0, 0] += offset
                 gt_bbox_3d = np.concatenate([loc, dim, rotation_y], axis=1).astype(np.float32)
@@ -426,46 +410,68 @@ class KITTI(data.Dataset):
                     gt_bbox_3d[:, 6], [0.5, 0.5, 0.5],
                     axis=1)
                 corners_3d = corners_3d[0].T  # (1, 8, 3) -> (3, 8)
+
                 all_corners_3d = corners_3d.copy()
                 valid_corners_mask = np.zeros((8, 1))
-        
+
                 in_front = np.argwhere(corners_3d[2, :] > 0).flatten()
                 corners_3d = corners_3d[:, in_front]
 
                 # mark valid corners (depth > 0) as 1 (labelled but not visible, similar as COCO)
                 valid_corners_mask[in_front, :] = 1
 
-                # Project 3d box to 2d.
-                camera_intrinsic = calib.P2
-                camera_intrinsic = np.concatenate([camera_intrinsic, np.array([[0, 0, 0, 1]])], axis=0)
                 corner_coords = view_points(corners_3d, camera_intrinsic,
-                                            True).T[:, :2].tolist()
+                                    True).T[:, :2]
+                #* 如果翻转需要变化
+                if random_flip_flag:
+                    corner_coords[..., 0::2] = img_size[0] -  corner_coords[..., 0::2] - 1
+                corner_coords = corner_coords.tolist()
                 corner_coords = [affine_transform(corner_coord, trans) for corner_coord in corner_coords]
+
                 all_corner_coords = view_points(all_corners_3d, camera_intrinsic, True).T[:, :2]
+                #* 如果翻转需要变化
+                if random_flip_flag:
+                    all_corner_coords[..., 0::2] = img_size[0] -  all_corner_coords[..., 0::2] - 1
+                all_corner_coords = all_corner_coords.tolist()
                 all_corner_coords = [affine_transform(corner_coord, trans) for corner_coord in all_corner_coords]
                 all_corner_coords = np.hstack([all_corner_coords, valid_corners_mask])
-
-                # Keep only corners that fall within the image.
+                
                 final_coords = post_process_coords(corner_coords, self.resolution)
 
-                # Skip if the convex hull of the re-projected corners
-                # does not intersect the image canvas.
                 if final_coords is None:
                     continue
                 
-                center3d = np.array(objects[i].pos).reshape([1, 3])
+                center3d = np.array(loc).reshape([1, 3])
                 center2d = points_cam2img(
                     center3d, camera_intrinsic, with_depth=True)
-                center2d[0][:2] = affine_transform(center2d[0][:2], trans)
                 if center2d[0][2] <= 0:
                     continue
+                if random_flip_flag:
+                    center2d[..., 0::2] = img_size[0] - center2d[..., 0::2] - 1
+                center2d[0][:2] = affine_transform(center2d[0][:2], trans)
+
                 center2d_valid = center2d.copy()
                 center2d_valid[:, 2] = 1
                 projected_pts = np.concatenate([all_corner_coords, center2d_valid])
+                if random_flip_flag:
+                    projected_pts[[0, 1, 2, 3, 4, 5, 6, 7], :] = projected_pts[[1, 0, 3, 2, 5, 4, 7, 6], :]
+                # if random_crop_flag and random_flip_flag:
+                #     new_img = np.array(img)
+                #     new_img = new_img.transpose(1, 2, 0) 
+                #     new_img = (new_img*self.std) + self.mean
+                #     new_img = (new_img*255).astype(np.uint8)
+                #     flag = False
+                #     for x, y, z in projected_pts:
+                #         if (0 <= x <= self.resolution[0]) and (0 <= y <= self.resolution[1]) and ((x < coord_range[0][0]) or (x > coord_range[1][0])):
+                #             flag = True
+                #         new_img = cv2.circle(new_img, (int(x), int(y)), 3, (0, 255, 0), 2)
+                #     if flag:
+                #         cv2.imwrite("affine.png", new_img)
+                #         exit(0)
                 for kpt_idx in range(len(projected_pts)):
                     kptx, kpty, vis = projected_pts[kpt_idx]
-                    is_kpt_in_image = (max(0, coord_range[0][0]) <= kptx <= min(coord_range[1][0], self.resolution[0])) and \
-                        (max(0, coord_range[0][1]) <= kpty <= min(coord_range[1][1], self.resolution[1]))
+                    is_kpt_in_image = 0 <= kptx <= self.resolution[0] and \
+                        0 <= kpty <= self.resolution[1]
                     if is_kpt_in_image:
                         projected_pts[kpt_idx, 2] = 2
                 # if random_crop_flag:
@@ -506,7 +512,11 @@ class KITTI(data.Dataset):
                     center2kpt_offset_target[i, k * 2 + 1] = kpty - cty_int
                     mask_center2kpt_offset[i, k * 2:k * 2 + 2] = 1
 
-                    is_kpt_inside_image = (max(0, coord_range[0][0]/self.downsample) <= kptx_int < min(coord_range[1][0]/self.downsample, feat_w)) and (max(0, coord_range[0][1]/self.downsample) <= kpty_int < min(coord_range[1][1]/self.downsample, feat_h))
+                    # is_kpt_inside_boundary = 0 <= kptx_int < self.resolution[0]/self.downsample and 0 <= kpty_int < self.resolution[1]/self.downsample
+                    # if not is_kpt_inside_boundary:
+                    #     continue
+                    is_kpt_inside_image = 0 <= kptx_int < self.resolution[0]/self.downsample and \
+                        0 <= kpty_int < self.resolution[1]/self.downsample
                     if not is_kpt_inside_image:
                         continue
 
@@ -530,8 +540,7 @@ class KITTI(data.Dataset):
                        'heading_bin': heading_bin,
                        'heading_res': heading_res,
                        'cls_ids': cls_ids,
-                       'mask_2d': mask_2d,
-
+                       'mask_2d': mask_2d, 
                        'vis_depth': vis_depth,
                        'att_depth': att_depth,
                        'depth_mask': depth_mask,
@@ -540,8 +549,20 @@ class KITTI(data.Dataset):
                        "kpt_heatmap_offset_target": kpt_heatmap_offset_target,
                        "mask_center2kpt_offset": mask_center2kpt_offset,
                        "indices_kpt": indices_kpt,
-                       "mask_kpt_heatmap_offset": mask_kpt_heatmap_offset
+                       "mask_kpt_heatmap_offset": mask_kpt_heatmap_offset,
+                    #    "heatmap_mask": heatmap_mask,
+                    #    "kpt_heatmap_mask_target": kpt_heatmap_mask_target,
                        }
+            if random_flip_flag:
+                camera_intrinsic = calib.P2
+                camera_intrinsic[0, 2] = img_size[0] - camera_intrinsic[0, 2] - 1
+                camera_intrinsic[0, 3] = - camera_intrinsic[0, 3]
+                calib.P2 = camera_intrinsic
+                for object in objects:
+                    object.ry = np.pi - object.ry
+                    object.pos[0] *= -1
+                    if object.ry > np.pi:  object.ry -= 2 * np.pi
+                    if object.ry < -np.pi: object.ry += 2 * np.pi
         else:
             targets = {}
 
